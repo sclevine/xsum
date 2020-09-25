@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -42,56 +43,111 @@ func main() {
 	if hf == nil {
 		log.Fatalf("Invalid algorithm `%s'", opts.Algorithm)
 	}
-	nodes, err := hf.Sum(opts.Args.Paths)
-	if err != nil {
-		log.Fatalf("Error: %s", err)
-	}
-	for _, n := range nodes {
-		fmt.Printf("%x  %s\n", n.sum, n.path)
+	next := hf.Sum(opts.Args.Paths)
+	for n, err := next(); err != ErrEmpty; n, err = next() {
+		if err != nil {
+			log.Printf("xsum: %s", err)
+			continue
+		}
+		fmt.Printf("%x  %s\n", n.Sum, n.Path)
 	}
 }
 
 var Lock = semaphore.NewWeighted(int64(runtime.NumCPU()))
 
+var ErrSpecialFile = errors.New("special file")
+
 type Node struct {
-	path string
-	sum  []byte
-	mode os.FileMode
+	Path string
+	Sum  []byte
+	Mode os.FileMode
 }
 
 type HashFunc func() hash.Hash
 
-func (hf HashFunc) extend(n *Node) error {
-	permSum, err := hf.hashBytes(permBytes(n))
-	if err != nil {
-		return err
+func (hf HashFunc) Sum(paths []string) func() (*Node, error) {
+	queue := newPQ(len(paths))
+	for i, path := range paths {
+		i, path := i, path
+		go func() {
+			n, err := hf.walk(path, false)
+			queue.add(i, n, err)
+		}()
 	}
-	xattrSum, err := hf.hashBytes(nil)
-	if err != nil {
-		return err
-	}
-	buf := bytes.NewBuffer(make([]byte, 0, len(n.sum)*4))
-	buf.Write(n.sum)
-	buf.Write(permSum)
-	buf.Write(xattrSum)
-	n.sum = buf.Bytes()
-	return nil
+	return queue.next
 }
 
-func (hf HashFunc) Sum(paths []string) ([]*Node, error) {
+func (hf HashFunc) walk(path string, subdir bool) (*Node, error) {
+	fi, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return nil, pathNewErr("does not exist", path, subdir)
+	}
+	if err != nil {
+		return nil, pathErr("stat", path, subdir, err)
+	}
+	switch {
+	case fi.IsDir():
+		nodes, err := hf.dir(path)
+		if err != nil {
+			if subdir {
+				return nil, err
+			}
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		sum, err := hf.merkle(nodes)
+		if err != nil {
+			return nil, pathErr("hash", path, subdir, err)
+		}
+		return &Node{path, sum, fi.Mode()}, nil
+
+	case fi.Mode().IsRegular() || (!subdir && fi.Mode()&os.ModeSymlink != 0):
+		// refine to prevent too many stats / merkel shas
+		Lock.Acquire(context.Background(), 1)
+		defer Lock.Release(1)
+
+		f, err := os.Open(path)
+		if err != nil {
+			return nil, pathErr("open", path, subdir, err)
+		}
+		defer f.Close()
+		sum, err := hf.hashReader(f)
+		if err != nil {
+			return nil, pathErr("hash", path, subdir, err)
+		}
+		return &Node{path, sum, fi.Mode()}, nil
+
+	case fi.Mode()&os.ModeSymlink != 0:
+		link, err := os.Readlink(path)
+		if err != nil {
+			return nil, pathErr("read link", path, subdir, err)
+		}
+		sum, err := hf.hashBytes([]byte(link))
+		if err != nil {
+			return nil, pathErr("hash", path, subdir, err)
+		}
+		return &Node{path, sum, fi.Mode()}, nil
+	}
+	return nil, pathErr("hash", path, subdir, ErrSpecialFile)
+}
+
+func (hf HashFunc) dir(path string) ([]*Node, error) {
+	names, err := readDirUnordered(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read dir `%s': %w", path, err)
+	}
 	var wg sync.WaitGroup
-	wg.Add(len(paths))
+	wg.Add(len(names))
 	errC := make(chan error)
 	go func() {
 		wg.Wait()
 		close(errC) // safe, no more errors sent
 	}()
-	nodes := make([]*Node, len(paths))
-	for i, path := range paths {
-		i, path := i, path
+	nodes := make([]*Node, len(names))
+	for i, name := range names {
+		i, path := i, filepath.Join(path, name)
 		go func() {
 			var err error
-			nodes[i], err = hf.walk(path)
+			nodes[i], err = hf.walk(path, true)
 			if err != nil {
 				errC <- err
 			}
@@ -99,71 +155,45 @@ func (hf HashFunc) Sum(paths []string) ([]*Node, error) {
 		}()
 	}
 	for err := range errC {
+		// error from walk has adequate context
 		return nil, err
 	}
 	return nodes, nil
 }
 
-func (hf HashFunc) walk(path string) (*Node, error) {
-	fi, err := os.Lstat(path)
-	if os.IsNotExist(err) {
-		return nil, fmt.Errorf("path `%s' does not exist", path)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to stat `%s': %w", path, err)
-	}
-	switch {
-	case fi.IsDir():
-		names, err := readDirUnordered(path)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read dir `%s': %w", path, err)
-		}
-		nodes, err := hf.Sum(withBase(path, names...))
+func (hf HashFunc) merkle(nodes []*Node) ([]byte, error) {
+	blocks := make([][]byte, 0, len(nodes))
+	for _, n := range nodes {
+		nameSum, err := hf.hashBytes([]byte(filepath.Base(n.Path)))
 		if err != nil {
 			return nil, err
 		}
-		sum, err := hf.merkle(nodes)
+		permSum, err := hf.hashBytes(permBytes(n))
 		if err != nil {
-			return nil, fmt.Errorf("failed to hash `%s': %w", path, err)
+			return nil, err
 		}
-		return &Node{path, sum, fi.Mode()}, nil
+		xattrSum, err := hf.hashBytes(nil)
+		if err != nil {
+			return nil, err
+		}
 
-	case fi.Mode().IsRegular():
-		// refine to prevent too many stats / merkel shas
-		Lock.Acquire(context.Background(), 1)
-		defer Lock.Release(1)
-
-		f, err := os.Open(path)
-		if err != nil {
-			return nil, fmt.Errorf("failed to open `%s': %w", path, err)
-		}
-		defer f.Close()
-		sum, err := hf.hashReader(f)
-		if err != nil {
-			return nil, fmt.Errorf("failed to hash `%s': %w", path, err)
-		}
-		return &Node{path, sum, fi.Mode()}, nil
-
-	case fi.Mode()&os.ModeSymlink != 0:
-		link, err := os.Readlink(path)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read link `%s': %w", path, err)
-		}
-		sum, err := hf.hashBytes([]byte(link))
-		if err != nil {
-			return nil, fmt.Errorf("failed to hash `%s': %w", path, err)
-		}
-		return &Node{path, sum, fi.Mode()}, nil
+		buf := bytes.NewBuffer(make([]byte, 0, len(n.Sum)*4))
+		buf.Write(nameSum)
+		buf.Write(n.Sum)
+		buf.Write(permSum)
+		buf.Write(xattrSum)
+		blocks = append(blocks, buf.Bytes())
 	}
-	return &Node{path, nil, fi.Mode()}, nil
-}
-
-func withBase(base string, paths ...string) []string {
-	out := make([]string, 0, len(paths))
-	for _, p := range paths {
-		out = append(out, filepath.Join(base, p))
+	sort.Slice(blocks, func(i, j int) bool {
+		return bytes.Compare(blocks[i], blocks[j]) < 0
+	})
+	h := hf()
+	for _, block := range blocks {
+		if _, err := h.Write(block); err != nil {
+			return nil, err
+		}
 	}
-	return out
+	return h.Sum(nil), nil
 }
 
 func (hf HashFunc) hashBytes(b []byte) ([]byte, error) {
@@ -182,53 +212,30 @@ func (hf HashFunc) hashReader(r io.Reader) ([]byte, error) {
 	return h.Sum(nil), nil
 }
 
-func (hf HashFunc) exclude(n *Node) bool {
-	return !n.mode.IsRegular() && !n.mode.IsDir()
+func pathErr(verb, path string, subdir bool, err error) error {
+	var msg string
+	if subdir {
+		msg = "failed to %s `%s': %w"
+	} else {
+		msg = "%s[1]: failed to %s[0]: %w[2]"
+	}
+	return fmt.Errorf(msg, verb, path, err)
+}
+
+func pathNewErr(state, path string, subdir bool) error {
+	var msg string
+	if subdir {
+		msg = "`%s' %s"
+	} else {
+		msg = "%s: %s"
+	}
+	return fmt.Errorf(msg, path, state)
 }
 
 func permBytes(n *Node) []byte {
 	var perm [52]byte
-	binary.LittleEndian.PutUint32(perm[:4], uint32(n.mode&os.ModeType))
+	binary.LittleEndian.PutUint32(perm[:4], uint32(n.Mode&os.ModeType))
 	return perm[:]
-}
-
-func (hf HashFunc) merkle(nodes []*Node) ([]byte, error) {
-	blocks := make([][]byte, 0, len(nodes))
-	for _, n := range nodes {
-		if hf.exclude(n) {
-			log.Printf("Warning: skipping special file `%s'", n.path)
-			continue
-		}
-		nameSum, err := hf.hashBytes([]byte(filepath.Base(n.path)))
-		if err != nil {
-			return nil, err
-		}
-		permSum, err := hf.hashBytes(permBytes(n))
-		if err != nil {
-			return nil, err
-		}
-		xattrSum, err := hf.hashBytes(nil)
-		if err != nil {
-			return nil, err
-		}
-
-		buf := bytes.NewBuffer(make([]byte, 0, len(n.sum)*4))
-		buf.Write(nameSum)
-		buf.Write(n.sum)
-		buf.Write(permSum)
-		buf.Write(xattrSum)
-		blocks = append(blocks, buf.Bytes())
-	}
-	sort.Slice(blocks, func(i, j int) bool {
-		return bytes.Compare(blocks[i], blocks[j]) < 0
-	})
-	h := hf()
-	for _, block := range blocks {
-		if _, err := h.Write(block); err != nil {
-			return nil, err
-		}
-	}
-	return h.Sum(nil), nil
 }
 
 func readDirUnordered(dirname string) ([]string, error) {
