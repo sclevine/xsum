@@ -87,7 +87,11 @@ func (hf HashFunc) walk(path string, subdir bool) (*Node, error) {
 	}
 	switch {
 	case fi.IsDir():
-		nodes, err := hf.dir(path)
+		names, err := readDirUnordered(path)
+		if err != nil {
+			return nil, pathErr("read dir", path, subdir, err)
+		}
+		nodes, err := hf.dir(path, names)
 		if err != nil {
 			if subdir {
 				return nil, err
@@ -130,11 +134,7 @@ func (hf HashFunc) walk(path string, subdir bool) (*Node, error) {
 	return nil, pathErr("hash", path, subdir, ErrSpecialFile)
 }
 
-func (hf HashFunc) dir(path string) ([]*Node, error) {
-	names, err := readDirUnordered(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read dir `%s': %w", path, err)
-	}
+func (hf HashFunc) dir(path string, names []string) ([]*Node, error) {
 	var wg sync.WaitGroup
 	wg.Add(len(names))
 	errC := make(chan error)
@@ -214,10 +214,13 @@ func (hf HashFunc) hashReader(r io.Reader) ([]byte, error) {
 
 func pathErr(verb, path string, subdir bool, err error) error {
 	var msg string
-	if subdir {
-		msg = "failed to %s `%s': %w"
+	pErr := &os.PathError{}
+	if !subdir {
+		msg = "%[2]s: failed to %[1]s: %[3]w"
+	} else if errors.As(err, &pErr) {
+		msg = "failed to %[1]s: %[3]w"
 	} else {
-		msg = "%s[1]: failed to %s[0]: %w[2]"
+		msg = "failed to %s `%s': %w"
 	}
 	return fmt.Errorf(msg, verb, path, err)
 }
