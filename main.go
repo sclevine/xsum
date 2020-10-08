@@ -21,7 +21,7 @@ import (
 )
 
 type Options struct {
-	Algorithm string `short:"a" long:"algorithm" default:"sha256" description:"Select hashing algorithm"`
+	Algorithm string `short:"a" long:"algorithm" default:"sha256" description:"Hashing algorithm"`
 	Args      struct {
 		Paths []string `required:"1"`
 	} `positional-args:"yes"`
@@ -55,6 +55,9 @@ func main() {
 
 var Lock = semaphore.NewWeighted(int64(runtime.NumCPU()))
 
+func lock()    { Lock.Acquire(context.Background(), 1) }
+func release() { Lock.Release(1) }
+
 var ErrSpecialFile = errors.New("special file")
 
 type Node struct {
@@ -70,7 +73,7 @@ func (hf HashFunc) Sum(paths []string) func() (*Node, error) {
 	for i, path := range paths {
 		i, path := i, path
 		go func() {
-			n, err := hf.walk(path, false)
+			n, err := hf.walk(filepath.Clean(path), false)
 			queue.add(i, n, err)
 		}()
 	}
@@ -78,6 +81,10 @@ func (hf HashFunc) Sum(paths []string) func() (*Node, error) {
 }
 
 func (hf HashFunc) walk(path string, subdir bool) (*Node, error) {
+	lock()
+	rs := runSwitch(true)
+	defer rs.Do(release)
+
 	fi, err := os.Lstat(path)
 	if os.IsNotExist(err) {
 		return nil, pathNewErr("does not exist", path, subdir)
@@ -91,6 +98,8 @@ func (hf HashFunc) walk(path string, subdir bool) (*Node, error) {
 		if err != nil {
 			return nil, pathErr("read dir", path, subdir, err)
 		}
+		release()
+		rs.Set(false)
 		nodes, err := hf.dir(path, names)
 		if err != nil {
 			if subdir {
@@ -98,6 +107,8 @@ func (hf HashFunc) walk(path string, subdir bool) (*Node, error) {
 			}
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
+		lock()
+		rs.Set(true)
 		sum, err := hf.merkle(nodes)
 		if err != nil {
 			return nil, pathErr("hash", path, subdir, err)
@@ -105,10 +116,6 @@ func (hf HashFunc) walk(path string, subdir bool) (*Node, error) {
 		return &Node{path, sum, fi.Mode()}, nil
 
 	case fi.Mode().IsRegular() || (!subdir && fi.Mode()&os.ModeSymlink != 0):
-		// refine to prevent too many stats / merkel shas
-		Lock.Acquire(context.Background(), 1)
-		defer Lock.Release(1)
-
 		f, err := os.Open(path)
 		if err != nil {
 			return nil, pathErr("open", path, subdir, err)
@@ -210,6 +217,18 @@ func (hf HashFunc) hashReader(r io.Reader) ([]byte, error) {
 		return nil, err
 	}
 	return h.Sum(nil), nil
+}
+
+type runSwitch bool
+
+func (rs *runSwitch) Do(f func()) {
+	if *rs {
+		f()
+	}
+}
+
+func (rs *runSwitch) Set(v bool) {
+	*rs = runSwitch(v)
 }
 
 func pathErr(verb, path string, subdir bool, err error) error {
