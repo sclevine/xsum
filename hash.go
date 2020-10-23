@@ -19,7 +19,7 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-func parseHash(h string) HashFunc {
+func ParseHash(h string) HashFunc {
 	h = toSingle(h, "-", "_", ".", "/")
 
 	// order:

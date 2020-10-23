@@ -21,8 +21,10 @@ import (
 )
 
 type Options struct {
-	Algorithm string `short:"a" long:"algorithm" default:"sha256" description:"Hashing algorithm"`
-	Args      struct {
+	Algorithm string `short:"a" long:"algorithm" default:"sha256" description:"Use hashing algorithm"`
+	//Check     bool   `short:"c" long:"check" description:"Validate checksums"`
+	//Mask      string `short:"m" long:"mask" default:"0000" description:"Apply mask"`
+	Args struct {
 		Paths []string `required:"1"`
 	} `positional-args:"yes"`
 }
@@ -39,7 +41,7 @@ func main() {
 	if len(rest) != 0 {
 		log.Fatalf("Unparsable arguments: %s", strings.Join(rest, ", "))
 	}
-	hf := parseHash(opts.Algorithm)
+	hf := ParseHash(opts.Algorithm)
 	if hf == nil {
 		log.Fatalf("Invalid algorithm `%s'", opts.Algorithm)
 	}
@@ -49,7 +51,11 @@ func main() {
 			log.Printf("xsum: %s", err)
 			continue
 		}
-		fmt.Printf("%x  %s\n", n.Sum, n.Path)
+		if n.Mode&os.ModeDir != 0 {
+			fmt.Printf("%x:%s  %s\n", n.Sum, NewMask(0, AttrEmpty), filepath.ToSlash(n.Path))
+		} else {
+			fmt.Printf("%x  %s\n", n.Sum, filepath.ToSlash(n.Path))
+		}
 	}
 }
 
