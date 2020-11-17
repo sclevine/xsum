@@ -19,6 +19,8 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
+type HashFunc func() hash.Hash
+
 func ParseHash(h string) HashFunc {
 	h = toSingle(h, "-", "_", ".", "/")
 

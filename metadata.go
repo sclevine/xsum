@@ -14,8 +14,8 @@ const (
 	AttrGID
 	AttrX
 	AttrSpecial
-	AttrMTime
-	AttrCTime
+	AttrMtime
+	AttrCtime
 	AttrPortable
 	AttrInclude
 
@@ -30,8 +30,8 @@ var attrRep = []struct {
 	{AttrGID, 'g'},
 	{AttrX, 'x'},
 	{AttrSpecial, 's'},
-	{AttrMTime, 't'},
-	{AttrCTime, 'c'},
+	{AttrMtime, 't'},
+	{AttrCtime, 'c'},
 	{AttrPortable, 'p'},
 	{AttrInclude, 'i'},
 }

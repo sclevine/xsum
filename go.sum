@@ -1,3 +1,5 @@
+github.com/davecheney/xattr v0.0.0-20151008032638-dc6dbbe49f0b h1:a/CjIrvEH2NkUUIo4sqWIw+h3E63ttmS8L8Vx3ZaLS0=
+github.com/davecheney/xattr v0.0.0-20151008032638-dc6dbbe49f0b/go.mod h1:Gc/R1HBRJIEElnD4PGXGQZQYMb14oPbvTovm6WeuAvk=
 github.com/jessevdk/go-flags v1.4.0 h1:4IU2WS7AumrZ/40jfhf4QVDMsQwqA7VEHozFRrGARJA=
 github.com/jessevdk/go-flags v1.4.0/go.mod h1:4FA24M0QyGHXBuZZK/XkWh8h0e1EYbRYJSGM75WSRxI=
 golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
