@@ -41,3 +41,9 @@ func (p *pqueue) next() (*Node, error) {
 	p.i++
 	return r, err
 }
+
+// TODO: consider re-implementing add/next to extend/contract the array, allowing stream
+// TODO: re-consider parallelism model to ensure earlier manually specified items complete before later ones
+// TODO: idea for solution: priority lock?
+// TODO: idea for solution: instead of `go`, use ordered parallel queue
+// TODO: process manual items in blocks of numcpu (improvement, but does not solve)
