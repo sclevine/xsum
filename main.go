@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -10,13 +9,11 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/jessevdk/go-flags"
-	"golang.org/x/sync/semaphore"
+	"golang.org/x/sync/errgroup"
 )
 
 type Options struct {
@@ -98,11 +95,6 @@ func toFiles(paths []string, mask string) []File {
 	}
 	return out
 }
-
-var Lock = semaphore.NewWeighted(int64(runtime.NumCPU()))
-
-func lock()    { Lock.Acquire(context.Background(), 1) }
-func release() { Lock.Release(1) }
 
 var ErrSpecialFile = errors.New("special file")
 
@@ -197,30 +189,17 @@ func (s Sum) walk(file File, subdir bool) (*Node, error) {
 }
 
 func (s Sum) dir(file File, names []string) ([]*Node, error) {
-	var wg sync.WaitGroup
-	wg.Add(len(names))
-	errC := make(chan error)
-	go func() {
-		wg.Wait()
-		close(errC) // safe, no more errors sent
-	}()
 	nodes := make([]*Node, len(names))
+	g := &errgroup.Group{}
 	for i, name := range names {
 		i, name := i, name
-		go func() {
-			var err error
+		g.Go(func() (err error) {
 			nodes[i], err = s.walk(File{filepath.Join(file.Path, name), file.Mask}, true)
-			if err != nil {
-				errC <- err
-			}
-			wg.Done()
-		}()
+			return err
+		})
 	}
-	for err := range errC {
-		// error from walk has adequate context
-		return nil, err
-	}
-	return nodes, nil
+	// error from walk has adequate context
+	return nodes, g.Wait()
 }
 
 func (s Sum) merkle(nodes []*Node) ([]byte, error) {
