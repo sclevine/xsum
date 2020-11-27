@@ -108,103 +108,138 @@ type Node struct {
 	Sum  []byte
 	Mode os.FileMode
 	Sys  *SysProps
+	Err error
 }
 
 type Sum struct {
 	Func HashFunc
 }
 
-func (s Sum) Sum(files []File) func() (*Node, error) {
-	queue := newPQ(len(files))
-	for i, file := range files {
-		i, file := i, file
-		go func() {
-			file.Path = filepath.Clean(file.Path)
-			n, err := s.walk(file, false)
-			queue.add(i, n, err)
-		}()
+func (s Sum) Sum(files []File) ([]*Node, error) {
+	var nodes []*Node
+	if err := s.Each(files, func(n *Node, err error) error {
+		if err != nil {
+			return err
+		}
+		nodes = append(nodes, n)
+		return nil
+	}); err != nil {
+		return nil, err
 	}
-	return queue.next
+	return nodes, nil
 }
 
-func (s Sum) walk(file File, subdir bool) (*Node, error) {
+func (s Sum) Each(files []File, f func(*Node) error) error {
+	ch := make(chan <-chan *Node, NumCPU)
+	go func() {
+		for _, file := range files {
+			file.Path = filepath.Clean(file.Path)
+			nch := make(chan *Node)
+			s.walk(file, false, nch)
+			ch <- nch
+		}
+	}()
+	for c := range ch {
+		if err := f(<-c); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// for efficiency, this method may return before writing exactly one value to node
+// ideally, this would return a channel, but:
+// - the caller must be able to provide a channel
+// - the caller must be informed when the walk finishes
+func (s Sum) walk(file File, subdir bool, node chan<- *Node) {
 	lock()
 	rs := runSwitch(true)
 	defer rs.Do(release)
 
 	fi, err := os.Lstat(file.Path)
 	if os.IsNotExist(err) {
-		return nil, pathNewErr("does not exist", file.Path, subdir)
+		return pathNewErr("does not exist", file.Path, subdir)
 	}
 	if err != nil {
-		return nil, pathErr("stat", file.Path, subdir, err)
+		return pathErr("stat", file.Path, subdir, err)
 	}
 	switch {
 	case fi.IsDir():
 		names, err := readDirUnordered(file.Path)
 		if err != nil {
-			return nil, pathErr("read dir", file.Path, subdir, err)
+			return pathErr("read dir", file.Path, subdir, err)
 		}
 		release()
-		rs.Set(false)
-		nodes, err := s.dir(file, names)
+		rs.Cancel()
+		nodesCh, err := s.dir(file, names)
 		if err != nil {
 			if subdir {
-				return nil, err
+				return err
 			}
-			return nil, fmt.Errorf("%s: %w", file.Path, err)
+			return fmt.Errorf("%s: %w", file.Path, err)
 		}
-		lock()
-		rs.Set(true)
-		sum, err := s.merkle(nodes)
-		if err != nil {
-			return nil, pathErr("hash", file.Path, subdir, err)
-		}
-		return &Node{file, sum, fi.Mode(), getSysProps(fi)}, nil
+		// Locking on this operation would prevent short checksum operations from bypassing the NumCPU limit.
+		// However, it would also prevent earlier entries from finishing before later entries.
+		go func() {
+			sum, err := s.merkle(nodesCh, len(names))
+			if err != nil {
+				return pathErr("hash", file.Path, subdir, err)
+			}
+			node <- &Node{file, sum, fi.Mode(), getSysProps(fi)}, nil
+		}()
 
 	case fi.Mode().IsRegular() || (!subdir && fi.Mode()&os.ModeSymlink != 0):
-		f, err := os.Open(file.Path)
-		if err != nil {
-			return nil, pathErr("open", file.Path, subdir, err)
-		}
-		defer f.Close()
-		sum, err := s.hashReader(f)
-		if err != nil {
-			return nil, pathErr("hash", file.Path, subdir, err)
-		}
-		return &Node{file, sum, fi.Mode(), getSysProps(fi)}, nil
+		rs.Cancel()
+		go func() {
+			defer release()
+			f, err := os.Open(file.Path)
+			if err != nil {
+				return pathErr("open", file.Path, subdir, err)
+			}
+			defer f.Close()
+			sum, err := s.hashReader(f)
+			if err != nil {
+				return pathErr("hash", file.Path, subdir, err)
+			}
+			node <- &Node{file, sum, fi.Mode(), getSysProps(fi)}, nil
+		}()
 
 	case fi.Mode()&os.ModeSymlink != 0:
-		link, err := os.Readlink(file.Path)
-		if err != nil {
-			return nil, pathErr("read link", file.Path, subdir, err)
-		}
-		sum, err := s.hash([]byte(link))
-		if err != nil {
-			return nil, pathErr("hash", file.Path, subdir, err)
-		}
-		return &Node{file, sum, fi.Mode(), getSysProps(fi)}, nil
+		rs.Cancel()
+		go func() {
+			defer release()
+			link, err := os.Readlink(file.Path)
+			if err != nil {
+				return pathErr("read link", file.Path, subdir, err)
+			}
+			sum, err := s.hash([]byte(link))
+			if err != nil {
+				return pathErr("hash", file.Path, subdir, err)
+			}
+			node <- &Node{file, sum, fi.Mode(), getSysProps(fi)}, nil
+		}()
+	default:
+		return pathErr("hash", file.Path, subdir, ErrSpecialFile)
 	}
-	return nil, pathErr("hash", file.Path, subdir, ErrSpecialFile)
+	return nil
 }
 
-func (s Sum) dir(file File, names []string) ([]*Node, error) {
-	nodes := make([]*Node, len(names))
-	g := &errgroup.Group{}
-	for i, name := range names {
-		i, name := i, name
-		g.Go(func() (err error) {
-			nodes[i], err = s.walk(File{filepath.Join(file.Path, name), file.Mask}, true)
-			return err
+func (s Sum) dir(file File, names []string) (<-chan *Node, error) {
+	nodesCh := make(chan *Node, len(names))
+	g := &errgroup.Group{} // replace with WG
+	for _, name := range names {
+		name := name
+		g.Go(func() error {
+			return s.walk(File{filepath.Join(file.Path, name), file.Mask}, true, nodesCh)
 		})
 	}
 	// error from walk has adequate context
-	return nodes, g.Wait()
+	return nodesCh, g.Wait()
 }
 
-func (s Sum) merkle(nodes []*Node) ([]byte, error) {
-	blocks := make([][]byte, 0, len(nodes))
-	for _, n := range nodes {
+func (s Sum) merkle(nodes <-chan *Node, size int) ([]byte, error) {
+	blocks := make([][]byte, 0, size)
+	for n := range nodes {
 		nameSum, err := s.hash([]byte(filepath.Base(n.Path)))
 		if err != nil {
 			return nil, err
@@ -223,6 +258,9 @@ func (s Sum) merkle(nodes []*Node) ([]byte, error) {
 		buf.Write(permSum)
 		buf.Write(xattrSum)
 		blocks = append(blocks, buf.Bytes())
+		if len(blocks) >= size {
+			break
+		}
 	}
 	sort.Slice(blocks, func(i, j int) bool {
 		return bytes.Compare(blocks[i], blocks[j]) < 0
@@ -316,8 +354,8 @@ func (rs *runSwitch) Do(f func()) {
 	}
 }
 
-func (rs *runSwitch) Set(v bool) {
-	*rs = runSwitch(v)
+func (rs *runSwitch) Cancel() {
+	*rs = false
 }
 
 func pathErr(verb, path string, subdir bool, err error) error {
