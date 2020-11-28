@@ -59,7 +59,7 @@ var (
 	//WorkerLock = semaphore.NewWeighted(NumCPU)
 )
 
-func lock()    { CPULock.Acquire(context.Background(), 1) }
+func acquire() { CPULock.Acquire(context.Background(), 1) }
 func release() { CPULock.Release(1) }
 
 type wbatch struct {
@@ -93,7 +93,7 @@ func (p wpool) run() {
 			case n = <-b.n:
 			case f := <-b.c:
 				i++
-				lock()
+				acquire()
 				go func() {
 					defer release()
 					f()
