@@ -154,15 +154,15 @@ func (s *Sum) EachList(files []File, f func(*Node) error) error {
 }
 
 func (s *Sum) Each(files chan<- File, f func(*Node) error) error {
-	ch := make(chan chan *Node, NumCPU)
+	queue := NewNodeQueue()
 	errs := make(chan error)
 	go func() {
 		var nwg sync.WaitGroup
 		for file := range files {
 			var swg sync.WaitGroup
 			file.Path = filepath.Clean(file.Path)
-			nch := make(chan *Node)
-			ch <- nch
+			nodeRec := make(chan *Node)
+			queue.Enqueue(nodeRec)
 			nwg.Add(1)
 			swg.Add(1)
 			go func() {
@@ -172,12 +172,16 @@ func (s *Sum) Each(files chan<- File, f func(*Node) error) error {
 					errs <- err
 					return
 				}
-				nch <- n
+				nodeRec <- n
 			}()
 			swg.Wait()
 		}
 		nwg.Wait()
 		close(errs)
+	}()
+	nodes := make(chan *Node)
+	go func() {
+		queue.Dequeue()
 	}()
 
 	// TODO: err does not shutdown goroutines, need to thread ctx
@@ -187,10 +191,44 @@ func (s *Sum) Each(files chan<- File, f func(*Node) error) error {
 			if err := f(<-c); err != nil {
 				return err
 			}
-		case err := <-errs:
+		case err := <-errs: //FIXME: chops off last node!
 			return err
 		}
 	}
+}
+
+// NodeQueue is has concurrency-safe properties.
+// Neither Enqueue nor Dequeue are individually reentrant.
+// However, both may be called at the same time.
+type NodeQueue struct {
+	front, back *NodeQueueElement
+}
+
+type NodeQueueElement struct {
+	node <-chan *Node
+	next chan *NodeQueueElement
+}
+
+func NewNodeQueue() *NodeQueue {
+	elem := &NodeQueueElement{
+		next: make(chan *NodeQueueElement, 1),
+	}
+	return &NodeQueue{elem, elem}
+}
+
+func (q *NodeQueue) Enqueue(ch <-chan *Node) {
+	q.front.node = ch
+	elem := &NodeQueueElement{
+		next: make(chan *NodeQueueElement, 1),
+	}
+	q.front.next <- elem
+	q.front = elem
+}
+
+func (q *NodeQueue) Dequeue() *Node {
+	node := <-q.back.node
+	q.back = <-q.back.next
+	return node
 }
 
 func (s *Sum) acquire() {
@@ -285,9 +323,10 @@ func (s *Sum) dir(file File, names []string, subdir bool) (<-chan *Node, <-chan 
 			nodes <- node
 		}()
 	}
+	// TODO: use errgroup to determine if err was returned and then close nodes channel***
 	go func() {
 		nwg.Wait()
-		close(errs)
+		close(errs) // FIXME: chops off last error
 	}()
 	swg.Wait()
 	// error from walk has adequate context
