@@ -19,9 +19,9 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-type HashFunc func() hash.Hash
+type hashFunc func() hash.Hash
 
-func ParseHash(h string) HashFunc {
+func parseHash(h string) hashFunc {
 	h = toSingle(h, "-", "_", ".", "/")
 
 	// order:
@@ -105,7 +105,7 @@ func ParseHash(h string) HashFunc {
 	return nil
 }
 
-func mustHash(hkf func([]byte) (hash.Hash, error)) HashFunc {
+func mustHash(hkf func([]byte) (hash.Hash, error)) hashFunc {
 	if _, err := hkf(nil); err != nil {
 		panic(err)
 	}
@@ -118,25 +118,25 @@ func mustHash(hkf func([]byte) (hash.Hash, error)) HashFunc {
 	}
 }
 
-func hash32(hf func() hash.Hash32) HashFunc {
+func hash32(hf func() hash.Hash32) hashFunc {
 	return func() hash.Hash {
 		return hf()
 	}
 }
 
-func hash64(hf func() hash.Hash64) HashFunc {
+func hash64(hf func() hash.Hash64) hashFunc {
 	return func() hash.Hash {
 		return hf()
 	}
 }
 
-func hashTab32(hf func(*crc32.Table) hash.Hash32, tab *crc32.Table) HashFunc {
+func hashTab32(hf func(*crc32.Table) hash.Hash32, tab *crc32.Table) hashFunc {
 	return func() hash.Hash {
 		return hf(tab)
 	}
 }
 
-func hashTab64(hf func(*crc64.Table) hash.Hash64, tab *crc64.Table) HashFunc {
+func hashTab64(hf func(*crc64.Table) hash.Hash64, tab *crc64.Table) hashFunc {
 	return func() hash.Hash {
 		return hf(tab)
 	}
