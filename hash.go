@@ -33,14 +33,14 @@ func ParseHash(h string) HashFunc {
 
 	// Cryptographic hashes
 
-	case "md4":
+	case "m4", "md4":
 		return md4.New
-	case "m", "md5":
+	case "m5", "md5":
 		return md5.New
 
 	case "s1", "sha1":
 		return sha1.New
-	case "s", "sha", "s2", "sha2", "sha256", "s2256", "s2-256", "sha2256", "sha2-256":
+	case "s2", "sha2", "s256", "sha256", "s2256", "s2-256", "sha2256", "sha2-256":
 		return sha256.New
 	case "s224", "sha224", "s2224", "s2-224", "sha2224", "sha2-224":
 		return sha256.New224
@@ -70,7 +70,7 @@ func ParseHash(h string) HashFunc {
 	case "b2b512", "b2b-512", "blake2b512", "blake2b-512":
 		return mustHash(blake2b.New512)
 
-	case "r", "ripemd", "r160", "ripemd160":
+	case "r160", "ripemd160":
 		return ripemd160.New
 
 	// Non-cryptographic hashes
@@ -81,19 +81,19 @@ func ParseHash(h string) HashFunc {
 		return hashTab32(crc32.New, crc32.MakeTable(crc32.Castagnoli))
 	case "c32-koopman", "crc32-koopman":
 		return hashTab32(crc32.New, crc32.MakeTable(crc32.Koopman))
-	case "c", "crc", "c64", "crc64", "c64-iso", "crc64-iso":
+	case "c64", "crc64", "c64-iso", "crc64-iso":
 		return hashTab64(crc64.New, crc64.MakeTable(crc64.ISO))
 	case "c64-ecma", "crc64-ecma":
 		return hashTab64(crc64.New, crc64.MakeTable(crc64.ECMA))
 
-	case "a", "adler", "a32", "adler32":
+	case "a32", "adler32":
 		return hash32(adler32.New)
 
 	case "f32", "fnv32":
 		return hash32(fnv.New32)
 	case "f32a", "fnv32a":
 		return hash32(fnv.New32a)
-	case "f", "f64", "fnv64":
+	case "f64", "fnv64":
 		return hash64(fnv.New64)
 	case "f64a", "fnv64a":
 		return hash64(fnv.New64a)
