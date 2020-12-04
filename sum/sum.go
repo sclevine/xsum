@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"hash"
@@ -34,6 +35,13 @@ type Node struct {
 	Mode os.FileMode
 	Sys  *SysProps
 	Err  error
+}
+
+func (n *Node) String() string {
+	if n.Mode&os.ModeDir != 0 || n.Mask.Attr&AttrInclude != 0 {
+		return hex.EncodeToString(n.Sum) + ":" + n.Mask.String()
+	}
+	return hex.EncodeToString(n.Sum)
 }
 
 type Sum struct {
