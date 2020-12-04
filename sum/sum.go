@@ -172,6 +172,14 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		if err != nil {
 			return pathErrNode("hash", file, subdir, err)
 		}
+		if file.Mask.Attr&AttrInclude != 0 && !subdir {
+			node := &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
+			node.Sum, err = s.hashFileSig(node)
+			if err != nil {
+				return pathErrNode("hash metadata", file, subdir, err)
+			}
+			return node
+		}
 		return &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
 
 	case fi.Mode().IsRegular() || (!subdir && fi.Mode()&os.ModeSymlink != 0):
@@ -185,7 +193,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		if err != nil {
 			return pathErrNode("hash", file, subdir, err)
 		}
-		if file.Mask.Attr&AttrInclude != 0 {
+		if file.Mask.Attr&AttrInclude != 0 && !subdir {
 			node := &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
 			node.Sum, err = s.hashFileSig(node)
 			if err != nil {
@@ -204,6 +212,14 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		sum, err := s.hash([]byte(link))
 		if err != nil {
 			return pathErrNode("hash", file, subdir, err)
+		}
+		if file.Mask.Attr&AttrInclude != 0 && !subdir {
+			node := &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
+			node.Sum, err = s.hashFileSig(node)
+			if err != nil {
+				return pathErrNode("hash metadata", file, subdir, err)
+			}
+			return node
 		}
 		return &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
 	}
