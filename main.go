@@ -53,7 +53,7 @@ func output(files []sum.File, alg string) {
 		if n.Err != nil {
 			log.Printf("xsum: %s", n.Err)
 		}
-		if n.Mode&os.ModeDir != 0 {
+		if n.Mode&os.ModeDir != 0 || n.Mask.Attr&sum.AttrInclude != 0 {
 			fmt.Printf("%x:%s  %s\n", n.Sum, n.Mask, filepath.ToSlash(n.Path))
 		} else {
 			fmt.Printf("%x  %s\n", n.Sum, filepath.ToSlash(n.Path))

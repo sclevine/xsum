@@ -154,9 +154,9 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 				}
 				return &Node{File: file, Err: fmt.Errorf("%s: %w", file.Path, n.Err)}
 			}
-			b, err := s.hashDirMD(n)
+			b, err := s.dirSig(n)
 			if err != nil {
-				return pathErrNode("hash", file, subdir, err)
+				return pathErrNode("hash metadata", file, subdir, err)
 			}
 			blocks = append(blocks, b)
 		}
@@ -176,6 +176,14 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		sum, err := s.hashReader(f)
 		if err != nil {
 			return pathErrNode("hash", file, subdir, err)
+		}
+		if file.Mask.Attr&AttrInclude != 0 {
+			node := &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
+			node.Sum, err = s.hashFileSig(node)
+			if err != nil {
+				return pathErrNode("hash metadata", file, subdir, err)
+			}
+			return node
 		}
 		return &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
 
@@ -214,23 +222,7 @@ func (s *Sum) walkDir(file File, names []string) <-chan *Node {
 	return nodes
 }
 
-func (s *Sum) hash(b []byte) ([]byte, error) {
-	h := s.Func()
-	if _, err := h.Write(b); err != nil {
-		return nil, err
-	}
-	return h.Sum(nil), nil
-}
-
-func (s *Sum) hashReader(r io.Reader) ([]byte, error) {
-	h := s.Func()
-	if _, err := io.Copy(h, r); err != nil {
-		return nil, err
-	}
-	return h.Sum(nil), nil
-}
-
-func (s *Sum) hashDirMD(n *Node) ([]byte, error) {
+func (s *Sum) dirSig(n *Node) ([]byte, error) {
 	nameSum, err := s.hash([]byte(filepath.Base(n.Path)))
 	if err != nil {
 		return nil, err
@@ -251,7 +243,7 @@ func (s *Sum) hashDirMD(n *Node) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (s *Sum) hashFileMD(n *Node) ([]byte, error) {
+func (s *Sum) fileSig(n *Node) ([]byte, error) {
 	permSum, err := s.hashSysattr(n)
 	if err != nil {
 		return nil, err
@@ -265,6 +257,30 @@ func (s *Sum) hashFileMD(n *Node) ([]byte, error) {
 	buf.Write(permSum)
 	buf.Write(xattrSum)
 	return buf.Bytes(), nil
+}
+
+func (s *Sum) hashFileSig(n *Node) ([]byte, error) {
+	sig, err := s.fileSig(n)
+	if err != nil {
+		return nil, err
+	}
+	return s.hash(sig)
+}
+
+func (s *Sum) hash(b []byte) ([]byte, error) {
+	h := s.Func()
+	if _, err := h.Write(b); err != nil {
+		return nil, err
+	}
+	return h.Sum(nil), nil
+}
+
+func (s *Sum) hashReader(r io.Reader) ([]byte, error) {
+	h := s.Func()
+	if _, err := io.Copy(h, r); err != nil {
+		return nil, err
+	}
+	return h.Sum(nil), nil
 }
 
 func (s *Sum) hashBlocks(blocks [][]byte) ([]byte, error) {
