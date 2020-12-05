@@ -17,10 +17,20 @@ type Options struct {
 	Algorithm string `short:"a" long:"algorithm" default:"sha256" description:"Use hashing algorithm"`
 	Check     bool   `short:"c" long:"check" description:"Validate checksums"`
 	Mask      string `short:"m" long:"mask" default:"0000" description:"Apply mask"`
+	Status    bool   `short:"s" long:"status" description:"With --check, suppress all output"`
+	Quiet     bool   `short:"q" long:"quiet" description:"With --check, suppress passing checksums"`
 	Args      struct {
 		Paths []string `required:"1"`
 	} `positional-args:"yes"`
 }
+
+type outputLevel int
+
+const (
+	outputNormal outputLevel = iota
+	outputStatus
+	outputQuiet
+)
 
 func main() {
 	log.SetFlags(0)
@@ -29,6 +39,9 @@ func main() {
 	parser := flags.NewParser(&opts, flags.HelpFlag|flags.PassAfterNonOption|flags.PassDoubleDash)
 	rest, err := parser.Parse()
 	if err != nil {
+		if err, ok := err.(*flags.Error); ok && err.Type == flags.ErrHelp {
+			log.Fatal(err)
+		}
 		log.Fatalf("Invalid arguments: %s", err)
 	}
 	if len(rest) != 0 {
@@ -37,8 +50,14 @@ func main() {
 	if opts.Check && opts.Mask != "0000" {
 		log.Fatal("Mask must be read from checksum file and cannot be specified manually.")
 	}
+	level := outputNormal
+	if opts.Status {
+		level = outputStatus
+	} else if opts.Quiet {
+		level = outputQuiet
+	}
 	if opts.Check {
-		check(opts.Args.Paths, opts.Algorithm)
+		check(opts.Args.Paths, opts.Algorithm, level)
 	} else {
 		output(toFiles(opts.Args.Paths, opts.Mask), opts.Algorithm)
 	}
@@ -60,7 +79,7 @@ func output(files []sum.File, alg string) {
 	}
 }
 
-func check(indexes []string, alg string) {
+func check(indexes []string, alg string, level outputLevel) {
 	hf := parseHash(alg)
 	if hf == nil {
 		log.Fatalf("Invalid algorithm `%s'", alg)
@@ -83,10 +102,14 @@ func check(indexes []string, alg string) {
 			log.Printf("xsum: %s", n.Err)
 		}
 		if string(n.Sum) != <-sums {
-			fmt.Println(n.Path + ": FAILED")
+			if level != outputStatus {
+				fmt.Println(n.Path + ": FAILED")
+			}
 			failed++
 		} else {
-			fmt.Println(n.Path + ": OK")
+			if level != outputStatus && level != outputQuiet {
+				fmt.Println(n.Path + ": OK")
+			}
 		}
 		return nil
 	}); err != nil {
@@ -96,6 +119,9 @@ func check(indexes []string, alg string) {
 		plural := ""
 		if failed > 1 {
 			plural = "s"
+		}
+		if level == outputStatus {
+			os.Exit(1)
 		}
 		log.Fatalf("xsum: WARNING: %d computed checksum%s did NOT match", failed, plural)
 	}
