@@ -20,6 +20,7 @@ import (
 
 var (
 	ErrSpecialFile = errors.New("special file")
+	ErrNoStat      = errors.New("stat data unavailable")
 
 	DefaultLock = semaphore.NewWeighted(int64(runtime.NumCPU()))
 )
@@ -349,6 +350,10 @@ func (s *Sum) hashSysattr(n *Node) ([]byte, error) {
 	mode := n.Mode & (os.ModeType | permMask | specialMask)
 	binary.LittleEndian.PutUint32(out[:4], uint32(mode))
 
+	if n.Sys == nil && n.Mask.Attr&(AttrUID|AttrGID|AttrSpecial|AttrMtime|AttrCtime) != 0 {
+		return nil, ErrNoStat
+	}
+
 	if n.Mask.Attr&AttrUID != 0 {
 		binary.LittleEndian.PutUint32(out[4:8], n.Sys.UID)
 	}
@@ -356,7 +361,7 @@ func (s *Sum) hashSysattr(n *Node) ([]byte, error) {
 		binary.LittleEndian.PutUint32(out[8:12], n.Sys.GID)
 	}
 	if n.Mask.Attr&AttrSpecial != 0 && n.Mode&(os.ModeDevice|os.ModeCharDevice) != 0 {
-		binary.LittleEndian.PutUint32(out[12:20], uint32(n.Sys.Device))
+		binary.LittleEndian.PutUint64(out[12:20], n.Sys.Device)
 	}
 	if n.Mask.Attr&AttrMtime != 0 {
 		binary.LittleEndian.PutUint64(out[20:28], uint64(n.Sys.Mtime.Sec))
