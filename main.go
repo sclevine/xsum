@@ -72,11 +72,12 @@ func output(files []sum.File, alg string) {
 	if err := sum.New(hf).EachList(files, func(n *sum.Node) error {
 		if n.Err != nil {
 			log.Printf("xsum: %s", n.Err)
+			return nil
 		}
 		fmt.Println(n.String() + "  " + filepath.ToSlash(n.Path))
 		return nil
 	}); err != nil {
-		log.Printf("xsum: %s", err)
+		log.Fatalf("xsum: %s", err)
 	}
 }
 

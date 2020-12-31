@@ -4,7 +4,7 @@ package sum
 
 import (
 	"bytes"
-	"encoding/base64"
+	"encoding/hex"
 	"sort"
 
 	"github.com/davecheney/xattr"
@@ -22,9 +22,9 @@ func getXattr(path string) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		out.Write([]byte(base64.StdEncoding.EncodeToString([]byte(attr))))
+		out.Write([]byte(hex.EncodeToString([]byte(attr))))
 		out.Write([]byte{':'})
-		out.Write([]byte(base64.StdEncoding.EncodeToString(val)))
+		out.Write([]byte(hex.EncodeToString(val)))
 		out.Write([]byte{'\n'})
 	}
 	return out.Bytes(), nil
