@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"os"
@@ -101,7 +102,7 @@ func check(indexes []string, alg string, level outputLevel) {
 		if n.Err != nil {
 			log.Printf("xsum: %s", n.Err)
 		}
-		if string(n.Sum) != <-sums {
+		if hex.EncodeToString(n.Sum) != <-sums {
 			if level != outputStatus {
 				fmt.Println(n.Path + ": FAILED")
 			}
@@ -143,7 +144,7 @@ func readIndex(path string, fn func(sum.File, string)) {
 			continue
 		}
 		hash := lines[0]
-		filepath := lines[1]
+		fpath := lines[1]
 
 		var mask sum.Mask
 		if p := strings.SplitN(hash, ":", 2); len(p) == 2 {
@@ -151,7 +152,7 @@ func readIndex(path string, fn func(sum.File, string)) {
 			mask = sum.NewMaskString(p[1])
 		}
 
-		fn(sum.File{filepath, mask}, strings.ToLower(hash))
+		fn(sum.File{Path: fpath, Mask: mask}, strings.ToLower(hash))
 	}
 }
 
