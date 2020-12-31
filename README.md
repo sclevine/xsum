@@ -19,7 +19,3 @@ However, xsum is different from existing tools because:
 ## FAQ
 
 Checksum of a directory? That's a meaningless concept!
-
-
-
-# HN: Show HN: xsum: Faster, more useful checksums using Merkle Trees

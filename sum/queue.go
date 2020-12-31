@@ -1,6 +1,6 @@
 package sum
 
-// nodeQueue is has concurrency-safe properties.
+// nodeQueue has concurrency-safe properties.
 // Neither enqueue nor dequeue are individually reentrant.
 // However, both may be called at the same time.
 type nodeQueue struct {

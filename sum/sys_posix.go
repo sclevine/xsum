@@ -1,4 +1,4 @@
-// +build linux darwin
+// +build linux darwin freebsd netbsd solaris
 
 package sum
 
@@ -7,18 +7,18 @@ import (
 	"encoding/hex"
 	"sort"
 
-	"github.com/davecheney/xattr"
+	"github.com/pkg/xattr"
 )
 
 func getXattr(path string) ([]byte, error) {
-	attrs, err := xattr.Listxattr(path)
+	attrs, err := xattr.LList(path)
 	if err != nil {
 		return nil, err
 	}
 	sort.Strings(attrs)
 	out := &bytes.Buffer{}
 	for _, attr := range attrs {
-		val, err := xattr.Getxattr(path, attr)
+		val, err := xattr.LGet(path, attr)
 		if err != nil {
 			return nil, err
 		}
