@@ -204,10 +204,17 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		return &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
 
 	case fi.Mode()&os.ModeSymlink != 0:
-		sOnce.Do(sched)
+		if subdir { // when add -L, add check here
+			// announce schedule early if not following link
+			sOnce.Do(sched)
+		}
 		link, err := os.Readlink(file.Path)
 		if err != nil {
 			return pathErrNode("read link", file, subdir, err)
+		}
+		if !subdir { // when add -L, add check here
+			rOnce.Do(s.release)
+			return s.walkFile(File{Path: link, Mask: file.Mask}, subdir, sched)
 		}
 		sum, err := s.hash([]byte(link))
 		if err != nil {
