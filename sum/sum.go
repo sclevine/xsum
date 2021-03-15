@@ -163,7 +163,13 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 				}
 				return &Node{File: file, Err: fmt.Errorf("%s: %w", file.Path, n.Err)}
 			}
-			b, err := s.dirSig(n)
+
+			var b []byte
+			if file.Mask.Attr&AttrPortable != 0 {
+				b, err = s.fileSig(n)
+			} else {
+				b, err = s.dirSig(n)
+			}
 			if err != nil {
 				return pathErrNode("hash metadata", file, subdir, err)
 			}
