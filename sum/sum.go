@@ -163,13 +163,11 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 				}
 				return &Node{File: file, Err: fmt.Errorf("%s: %w", file.Path, n.Err)}
 			}
-
-			var b []byte
-			if file.Mask.Attr&AttrPortable != 0 {
-				b, err = s.fileSig(n)
-			} else {
-				b, err = s.dirSig(n)
+			var name string
+			if file.Mask.Attr&AttrPortable == 0 {
+				name = filepath.Base(n.Path)
 			}
+			b, err := s.dirSig(name, n)
 			if err != nil {
 				return pathErrNode("hash metadata", file, subdir, err)
 			}
@@ -189,7 +187,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		}
 		return &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
 
-	case fi.Mode().IsRegular() || (!subdir && fi.Mode()&os.ModeSymlink != 0):
+	case fi.Mode().IsRegular():
 		sOnce.Do(sched)
 		f, err := os.Open(file.Path)
 		if err != nil {
@@ -221,7 +219,11 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		}
 		if !subdir { // when add -L, add check here
 			rOnce.Do(s.release)
-			return s.walkFile(File{Path: link, Mask: file.Mask}, subdir, sched)
+			sOnce.Do(nil)
+			// if symlinks are followed in subdir case, consider correcting name sum
+			n := s.walkFile(File{Path: link, Mask: file.Mask}, subdir, sched)
+			n.Path = file.Path
+			return n
 		}
 		sum, err := s.hash([]byte(link))
 		if err != nil {
@@ -260,8 +262,8 @@ func (s *Sum) walkDir(file File, names []string) <-chan *Node {
 	return nodes
 }
 
-func (s *Sum) dirSig(n *Node) ([]byte, error) {
-	nameSum, err := s.hash([]byte(filepath.Base(n.Path)))
+func (s *Sum) dirSig(filename string, n *Node) ([]byte, error) {
+	nameSum, err := s.hash([]byte(filename))
 	if err != nil {
 		return nil, err
 	}
