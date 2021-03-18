@@ -39,7 +39,14 @@ type Node struct {
 }
 
 func (n *Node) String() string {
-	if n.Mode&os.ModeDir != 0 || n.Mask.Attr&AttrInclude != 0 {
+	rawFile := n.Mode&os.ModeDir == 0 && n.Mask.Attr&AttrInclude == 0
+	noData := n.Mask.Attr&AttrNoData != 0
+
+	if rawFile && noData {
+		// FIXME: empty dir and empty file have same SHA...
+		return hex.EncodeToString(n.Sum) + ":" + NewMask(0, AttrNoData).String()
+	}
+	if !rawFile {
 		return hex.EncodeToString(n.Sum) + ":" + n.Mask.String()
 	}
 	return hex.EncodeToString(n.Sum)
@@ -190,7 +197,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 	case fi.Mode().IsRegular():
 		sOnce.Do(sched)
 		var sum []byte
-		if file.Mask.Attr&AttrMetadata == 0 {
+		if file.Mask.Attr&AttrNoData == 0 {
 			f, err := os.Open(file.Path)
 			if err != nil {
 				return pathErrNode("open", file, subdir, err)
@@ -214,7 +221,8 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		return &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
 
 	case fi.Mode()&os.ModeSymlink != 0:
-		if subdir { // when add -L, add check here
+		// FIXME: remaining cases
+		if (!subdir && file.Mask.Attr&AttrInclude != 0) { // when add -L, add check here
 			// announce schedule early if not following link
 			sOnce.Do(sched)
 		}

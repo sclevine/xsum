@@ -18,7 +18,8 @@ const (
 	AttrCtime
 	AttrPortable
 	AttrInclude
-	AttrMetadata
+	AttrNoData
+	AttrFollow
 
 	AttrEmpty Attr = 0
 )
@@ -35,17 +36,21 @@ var attrRep = []struct {
 	{AttrCtime, 'c'},
 	{AttrPortable, 'p'},
 	{AttrInclude, 'i'},
-	{AttrMetadata, 'm'},
+	{AttrNoData, 'm'},
+	{AttrFollow, 'l'},
 }
 
 func NewAttr(s string) Attr {
 	var attr Attr
+L:
 	for _, c := range []byte(s) {
 		for _, p := range attrRep {
 			if p.rep == c {
 				attr |= p.attr
+				continue L
 			}
 		}
+		// FIXME: return error here
 	}
 	return attr
 }
@@ -72,7 +77,6 @@ func NewMaskString(s string) Mask {
 	if len(parts) > 1 {
 		attrs = parts[1]
 	}
-
 	mode64, err := strconv.ParseUint(mode, 8, 12)
 	if err != nil {
 		mode64 = 0
