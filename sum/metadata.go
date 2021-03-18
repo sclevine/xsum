@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-type Attr uint8
+type Attr uint16
 
 const (
 	AttrUID Attr = 1 << iota
@@ -18,6 +18,7 @@ const (
 	AttrCtime
 	AttrPortable
 	AttrInclude
+	AttrMetadata
 
 	AttrEmpty Attr = 0
 )
@@ -34,6 +35,7 @@ var attrRep = []struct {
 	{AttrCtime, 'c'},
 	{AttrPortable, 'p'},
 	{AttrInclude, 'i'},
+	{AttrMetadata, 'm'},
 }
 
 func NewAttr(s string) Attr {

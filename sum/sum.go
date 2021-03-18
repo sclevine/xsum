@@ -189,14 +189,19 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 
 	case fi.Mode().IsRegular():
 		sOnce.Do(sched)
-		f, err := os.Open(file.Path)
-		if err != nil {
-			return pathErrNode("open", file, subdir, err)
-		}
-		defer f.Close()
-		sum, err := s.hashReader(f)
-		if err != nil {
-			return pathErrNode("hash", file, subdir, err)
+		var sum []byte
+		if file.Mask.Attr&AttrMetadata == 0 {
+			f, err := os.Open(file.Path)
+			if err != nil {
+				return pathErrNode("open", file, subdir, err)
+			}
+			defer f.Close()
+			sum, err = s.hashReader(f)
+			if err != nil {
+				return pathErrNode("hash", file, subdir, err)
+			}
+		} else {
+			sum = s.hashZero()
 		}
 		if file.Mask.Attr&AttrInclude != 0 && !subdir {
 			node := &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
@@ -321,6 +326,10 @@ func (s *Sum) hashReader(r io.Reader) ([]byte, error) {
 		return nil, err
 	}
 	return h.Sum(nil), nil
+}
+
+func (s *Sum) hashZero() []byte {
+	return s.Func().Sum(nil)
 }
 
 func (s *Sum) hashBlocks(blocks [][]byte) ([]byte, error) {

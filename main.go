@@ -17,7 +17,7 @@ import (
 type Options struct {
 	Algorithm string `short:"a" long:"algorithm" default:"sha256" description:"Use hashing algorithm"`
 	Check     bool   `short:"c" long:"check" description:"Validate checksums"`
-	Mask      string `short:"m" long:"mask" default:"0000" description:"Apply mask"`
+	Mask      string `short:"m" long:"mask" default:"0000" description:"Apply mask as [777]7[+ugx...]:\n+u\tInclude UID\n+g\tInclude GID\n+x\tInclude extended attrs\n+s\tInclude special file modes\n+t\tInclude modified time\n+c\tInclude created time\n+i\tInclude top-level metadata\n+p\tExclude file name (portable)\n+m\tExclude data (metadata-only)\n"`
 	Status    bool   `short:"s" long:"status" description:"With --check, suppress all output"`
 	Quiet     bool   `short:"q" long:"quiet" description:"With --check, suppress passing checksums"`
 	Args      struct {
