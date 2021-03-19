@@ -60,16 +60,20 @@ func main() {
 	if opts.Check {
 		check(opts.Args.Paths, opts.Algorithm, level)
 	} else {
-		output(toFiles(opts.Args.Paths, opts.Mask), opts.Algorithm)
+		output(opts.Args.Paths, opts.Mask, opts.Algorithm)
 	}
 }
 
-func output(files []sum.File, alg string) {
+func output(paths []string, mask, alg string) {
 	hf := parseHash(alg)
 	if hf == nil {
 		log.Fatalf("Invalid algorithm `%s'", alg)
 	}
-	if err := sum.New(hf).EachList(files, func(n *sum.Node) error {
+	m, err := sum.NewMaskString(mask)
+	if err != nil {
+		log.Fatalf("Invalid mask: %s", err)
+	}
+	if err := sum.New(hf).EachList(toFiles(paths, m), func(n *sum.Node) error {
 		if n.Err != nil {
 			log.Printf("xsum: %s", n.Err)
 			return nil
@@ -150,17 +154,21 @@ func readIndex(path string, fn func(sum.File, string)) {
 		var mask sum.Mask
 		if p := strings.SplitN(hash, ":", 2); len(p) == 2 {
 			hash = p[0]
-			mask = sum.NewMaskString(p[1])
+			mask, err = sum.NewMaskString(p[1])
+			if err != nil {
+				log.Printf("xsum: %s: invalid mask: %s", path, err)
+				continue
+			}
 		}
 
 		fn(sum.File{Path: fpath, Mask: mask}, strings.ToLower(hash))
 	}
 }
 
-func toFiles(paths []string, mask string) []sum.File {
+func toFiles(paths []string, mask sum.Mask) []sum.File {
 	var out []sum.File
 	for _, path := range paths {
-		out = append(out, sum.File{path, sum.NewMaskString(mask)})
+		out = append(out, sum.File{path, mask})
 	}
 	return out
 }

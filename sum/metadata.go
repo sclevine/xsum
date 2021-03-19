@@ -40,7 +40,7 @@ var attrRep = []struct {
 	{AttrFollow, 'l'},
 }
 
-func NewAttr(s string) Attr {
+func NewAttr(s string) (Attr, error) {
 	var attr Attr
 L:
 	for _, c := range []byte(s) {
@@ -50,9 +50,9 @@ L:
 				continue L
 			}
 		}
-		// FIXME: return error here
+		return 0, fmt.Errorf("invalid attribute `%s'", string(c))
 	}
-	return attr
+	return attr, nil
 }
 
 func (a Attr) String() string {
@@ -70,21 +70,27 @@ type Mask struct {
 	Attr Attr
 }
 
-func NewMaskString(s string) Mask {
+func NewMaskString(s string) (Mask, error) {
 	parts := strings.SplitN(s, "+", 2)
-	mode := parts[0]
+	mode := strings.TrimSpace(parts[0])
 	var attrs string
 	if len(parts) > 1 {
 		attrs = parts[1]
 	}
-	mode64, err := strconv.ParseUint(mode, 8, 12)
-	if err != nil {
-		mode64 = 0
+	mode16 := uint16(0)
+	if mode != "" {
+		mode64, err := strconv.ParseUint(mode, 8, 12)
+		if err != nil {
+			return Mask{}, fmt.Errorf("invalid mode `%s'", mode)
+		}
+		mode16 = uint16(mode64)
 	}
+
+	attr, err := NewAttr(attrs)
 	return Mask{
-		Mode: uint16(mode64),
-		Attr: NewAttr(attrs),
-	}
+		Mode: mode16,
+		Attr: attr,
+	}, err
 }
 
 func NewMask(mode os.FileMode, attr Attr) Mask {
