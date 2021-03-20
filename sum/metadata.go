@@ -16,8 +16,8 @@ const (
 	AttrSpecial
 	AttrMtime
 	AttrCtime
-	AttrPortable
 	AttrInclude
+	AttrNoName
 	AttrNoData
 	AttrFollow
 
@@ -34,9 +34,9 @@ var attrRep = []struct {
 	{AttrSpecial, 's'},
 	{AttrMtime, 't'},
 	{AttrCtime, 'c'},
-	{AttrPortable, 'p'},
 	{AttrInclude, 'i'},
-	{AttrNoData, 'm'},
+	{AttrNoName, 'n'},
+	{AttrNoData, 'e'},
 	{AttrFollow, 'l'},
 }
 

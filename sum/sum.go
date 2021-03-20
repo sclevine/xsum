@@ -140,7 +140,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		return pathErrNode("stat", file, subdir, err)
 	}
 
-	portable := file.Mask.Attr&AttrPortable != 0
+	portable := file.Mask.Attr&AttrNoName != 0
 	include := file.Mask.Attr&AttrInclude != 0
 	follow := file.Mask.Attr&AttrFollow != 0 || (!include && !subdir)
 	noData := file.Mask.Attr&AttrNoData != 0 && (include || subdir)
