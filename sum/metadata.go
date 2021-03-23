@@ -1,6 +1,9 @@
 package sum
 
 import (
+	"encoding/binary"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -16,7 +19,7 @@ const (
 	AttrSpecial
 	AttrMtime
 	AttrCtime
-	AttrInclude
+	AttrInclusive
 	AttrNoName
 	AttrNoData
 	AttrFollow
@@ -34,13 +37,13 @@ var attrRep = []struct {
 	{AttrSpecial, 's'},
 	{AttrMtime, 't'},
 	{AttrCtime, 'c'},
-	{AttrInclude, 'i'},
+	{AttrInclusive, 'i'},
 	{AttrNoName, 'n'},
 	{AttrNoData, 'e'},
 	{AttrFollow, 'l'},
 }
 
-func NewAttr(s string) (Attr, error) {
+func NewAttrString(s string) (Attr, error) {
 	var attr Attr
 L:
 	for _, c := range []byte(s) {
@@ -55,6 +58,18 @@ L:
 	return attr, nil
 }
 
+func NewAttrHex(s string) (Attr, error) {
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		return 0, fmt.Errorf("invalid hex attribute `%s'", s)
+	}
+	// ignore attrs beyond 2 bytes
+	if len(b) > 2 {
+		b = b[:2]
+	}
+	return Attr(binary.LittleEndian.Uint16(b)), nil
+}
+
 func (a Attr) String() string {
 	var out strings.Builder
 	for _, p := range attrRep {
@@ -65,8 +80,40 @@ func (a Attr) String() string {
 	return out.String()
 }
 
+func (a Attr) Hex() string {
+	b := make([]byte, 2)
+	binary.LittleEndian.PutUint16(b, uint16(a))
+	return hex.EncodeToString(b)
+}
+
+type Mode uint16
+
+func NewModeString(s string) (Mode, error) {
+	mode64, err := strconv.ParseUint(s, 8, 12)
+	if err != nil {
+		return 0, fmt.Errorf("invalid mode `%s'", s)
+	}
+	return Mode(mode64), nil
+}
+
+func NewModeHex(s string) (Mode, error) {
+	b, err := hex.DecodeString(s)
+	if err != nil || len(b) != 2 {
+		return 0, fmt.Errorf("invalid hex mode `%s'", s)
+	}
+	return Mode(binary.BigEndian.Uint16(b)), nil
+}
+
+func (m Mode) String() string {
+	return fmt.Sprintf("%04o", m)[:4]
+}
+
+func (m Mode) Hex() string {
+	return fmt.Sprintf("%03x", m)[:3]
+}
+
 type Mask struct {
-	Mode uint16
+	Mode Mode
 	Attr Attr
 }
 
@@ -77,34 +124,48 @@ func NewMaskString(s string) (Mask, error) {
 	if len(parts) > 1 {
 		attrs = parts[1]
 	}
-	mode16 := uint16(0)
-	if mode != "" {
-		mode64, err := strconv.ParseUint(mode, 8, 12)
-		if err != nil {
-			return Mask{}, fmt.Errorf("invalid mode `%s'", mode)
-		}
-		mode16 = uint16(mode64)
+	m, err := NewModeString(mode)
+	if err != nil {
+		return Mask{}, err
 	}
-
-	attr, err := NewAttr(attrs)
+	attr, err := NewAttrString(attrs)
 	return Mask{
-		Mode: mode16,
+		Mode: m,
+		Attr: attr,
+	}, err
+}
+
+func NewMaskHex(s string) (Mask, error) {
+	if len(s) < 3 {
+		return Mask{}, errors.New("mask too short")
+	}
+	mode, err := NewModeHex(s[:3])
+	if err != nil {
+		return Mask{}, err
+	}
+	attr, err := NewAttrHex(s[3:])
+	return Mask{
+		Mode: mode,
 		Attr: attr,
 	}, err
 }
 
 func NewMask(mode os.FileMode, attr Attr) Mask {
 	return Mask{
-		Mode: uint16(mode),
+		Mode: Mode(mode),
 		Attr: attr,
 	}
 }
 
 func (m Mask) String() string {
-	mode := fmt.Sprintf("%04o", m.Mode)[:4]
+	mode := m.Mode.String()
 	attrs := m.Attr.String()
 	if attrs == "" {
 		return mode
 	}
 	return fmt.Sprintf("%s+%s", mode, attrs)
+}
+
+func (m Mask) Hex() string {
+	return m.Mode.Hex() + m.Attr.Hex()
 }

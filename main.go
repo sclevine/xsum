@@ -21,14 +21,17 @@ type Options struct {
 	Status    bool   `short:"s" long:"status" description:"With --check, suppress all output"`
 	Quiet     bool   `short:"q" long:"quiet" description:"With --check, suppress passing checksums"`
 
+	Directory  bool `short:"d" long:"directories" description:"Directory mode, enables masks (implies: -m 0000)"`
 	Portable   bool `short:"p" long:"portable" description:"Portable mode, exclude names (implies: -m 0000+p)"`
 	Git        bool `short:"g" long:"git" description:"Git mode (implies: -m 0100)"`
 	Full       bool `short:"f" long:"full" description:"Full mode (implies: -m 7777+ug)"`
 	Extended   bool `short:"x" long:"extended" description:"Extended mode (implies: -m 7777+ugxs)"`
 	Everything bool `short:"e" long:"everything" description:"Everything mode (implies: -m 7777+ugxsct)"`
 
-	Inclusive bool `short:"i" long:"inclusive" description:"Include top-level metadata (adds: +i)"`
-	Symlinks  bool `short:"l" long:"symlinks" description:"Follow symlinks (adds: +l)"`
+	Inclusive bool `short:"i" long:"inclusive" description:"Include top-level metadata (adds +i to mask)"`
+	Follow    bool `short:"l" long:"follow" description:"Follow symlinks (adds +l to mask)"`
+
+	Opaque bool `short:"o" long:"opaque" description:"Encode mask to opaque, fixed-length hex"`
 
 	Args struct {
 		Paths []string `required:"1"`
@@ -61,6 +64,7 @@ func main() {
 	if multipleTrue(
 		opts.Check,
 		opts.Mask != "",
+		opts.Directory,
 		opts.Portable,
 		opts.Git,
 		opts.Full,
@@ -71,8 +75,11 @@ func main() {
 	if opts.Check && opts.Inclusive {
 		log.Fatal("Only one of -c, -i permitted.")
 	}
-	if opts.Check && opts.Symlinks {
+	if opts.Check && opts.Follow {
 		log.Fatal("Only one of -c, -l permitted.")
+	}
+	if opts.Check && opts.Opaque {
+		log.Fatal("Only one of -c, -o permitted.")
 	}
 
 	level := outputNormal
@@ -81,18 +88,21 @@ func main() {
 	} else if opts.Quiet {
 		level = outputQuiet
 	}
-	hf := parseHash(opts.Algorithm)
-	if hf == nil {
-		log.Fatalf("Invalid algorithm `%s'", opts.Algorithm)
+	alg, err := parseHash(opts.Algorithm)
+	if err != nil {
+		log.Fatalf("Invalid algorithm: %s", err)
 	}
 	if opts.Check {
-		check(opts.Args.Paths, hf, level)
+		check(opts.Args.Paths, alg, level)
 	} else {
-		mask, err := sum.NewMaskString(opts.Mask)
-		if err != nil {
-			log.Fatalf("Invalid mask: %s", err)
-		}
+		basic := false
+		var mask sum.Mask
 		switch {
+		case opts.Mask != "":
+			mask, err = sum.NewMaskString(opts.Mask)
+			if err != nil {
+				log.Fatalf("Invalid mask: %s", err)
+			}
 		case opts.Portable:
 			mask = sum.NewMask(0000, sum.AttrNoData)
 		case opts.Git:
@@ -103,44 +113,85 @@ func main() {
 			mask = sum.NewMask(7777, sum.AttrUID|sum.AttrGID|sum.AttrX|sum.AttrSpecial)
 		case opts.Everything:
 			mask = sum.NewMask(7777, sum.AttrUID|sum.AttrGID|sum.AttrX|sum.AttrSpecial|sum.AttrCtime|sum.AttrMtime)
+		case opts.Directory, opts.Inclusive, opts.Follow, opts.Opaque: // inclusive+follow+opaque must be last on this list
+			mask = sum.NewMask(0000, sum.AttrEmpty)
+		default:
+			basic = true
 		}
 		if opts.Inclusive {
-			mask.Attr |= sum.AttrInclude
+			mask.Attr |= sum.AttrInclusive
 		}
-		if opts.Symlinks {
+		if opts.Follow {
 			mask.Attr |= sum.AttrFollow
 		}
-		output(opts.Args.Paths, mask, hf)
+		output(opts.Args.Paths, mask, alg, basic, opts.Opaque)
 	}
 }
 
-func output(paths []string, mask sum.Mask, hf hashFunc) {
-	if err := sum.New(hf).EachList(toFiles(paths, mask), func(n *sum.Node) error {
+func output(paths []string, mask sum.Mask, hash *sum.HashAlg, basic, opaque bool) {
+	if err := sum.New(basic).EachList(toFiles(paths, mask, hash), func(n *sum.Node) error {
 		if n.Err != nil {
 			log.Printf("xsum: %s", n.Err)
 			return nil
 		}
-		fmt.Println(n.String() + "  " + filepath.ToSlash(n.Path))
+		if basic {
+			fmt.Println(n.SumHex() + "  " + filepath.ToSlash(n.Path))
+		} else if opaque {
+			fmt.Println(n.Hex() + "  " + filepath.ToSlash(n.Path))
+		} else {
+			fmt.Println(n.String() + "  " + filepath.ToSlash(n.Path))
+		}
 		return nil
 	}); err != nil {
 		log.Fatalf("xsum: %s", err)
 	}
 }
 
-func check(indexes []string, hf hashFunc, level outputLevel) {
+func write(paths []string, mask sum.Mask, alg *sum.HashAlg, basic, opaque bool, ext string) {
+	if err := sum.New(basic).EachList(toFiles(paths, mask, alg), func(n *sum.Node) error {
+		if n.Err != nil {
+			log.Printf("xsum: %s", n.Err)
+			return nil
+		}
+		// FIXME: deal with .. and .
+		if ext == "" {
+			ext = alg.Name
+		}
+		f, err := os.OpenFile(n.Path+"."+ext, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0777)
+		if err != nil {
+			log.Printf("xsum: %s", err)
+			return nil
+		}
+		// FIXME: support all three output formats
+		if _, err := fmt.Fprintln(f, n.String()+"  "+filepath.ToSlash(n.Path)); err != nil {
+			f.Close()
+			log.Printf("xsum: %s", err)
+			return nil
+		}
+		if err := f.Close(); err != nil {
+			log.Printf("xsum: %s", err)
+			return nil
+		}
+		return nil
+	}); err != nil {
+		log.Fatalf("xsum: %s", err)
+	}
+}
+
+func check(indexes []string, alg *sum.HashAlg, level outputLevel) {
 	files := make(chan sum.File, 1)
 	sums := make(chan string, 1)
 	go func() {
 		defer close(files)
 		for _, path := range indexes {
-			readIndex(path, func(f sum.File, sum string) {
+			readIndex(path, alg, func(f sum.File, sum string) {
 				files <- f
 				sums <- sum
 			})
 		}
 	}()
 	failed := 0
-	if err := sum.New(hf).Each(files, func(n *sum.Node) error {
+	if err := sum.New(false).Each(files, func(n *sum.Node) error {
 		if n.Err != nil {
 			log.Printf("xsum: %s", n.Err)
 		}
@@ -170,7 +221,7 @@ func check(indexes []string, hf hashFunc, level outputLevel) {
 	}
 }
 
-func readIndex(path string, fn func(sum.File, string)) {
+func readIndex(path string, alg *sum.HashAlg, fn func(sum.File, string)) {
 	f, err := os.Open(path)
 	if err != nil {
 		log.Printf("xsum: %s", err)
@@ -189,23 +240,38 @@ func readIndex(path string, fn func(sum.File, string)) {
 		fpath := lines[1]
 
 		var mask sum.Mask
-		if p := strings.SplitN(hash, ":", 2); len(p) == 2 {
-			hash = p[0]
-			mask, err = sum.NewMaskString(p[1])
+
+		if p := strings.SplitN(hash, ":", 3); len(p) > 1 {
+			alg, err = parseHash(p[0])
 			if err != nil {
-				log.Printf("xsum: %s: invalid mask: %s", path, err)
+				log.Printf("xsum: %s: invalid algorithm: %s", path, err)
 				continue
 			}
+			hash = p[1]
+			if len(p) > 2 {
+				if len(p[2]) > 4 && p[2][4] != '+' {
+					mask, err = sum.NewMaskHex(p[2])
+					if err != nil {
+						log.Printf("xsum: %s: invalid hex mask: %s", path, err)
+						continue
+					}
+				} else {
+					mask, err = sum.NewMaskString(p[2])
+					if err != nil {
+						log.Printf("xsum: %s: invalid mask: %s", path, err)
+						continue
+					}
+				}
+			}
 		}
-
-		fn(sum.File{Path: fpath, Mask: mask}, strings.ToLower(hash))
+		fn(sum.File{Alg: alg, Path: fpath, Mask: mask}, strings.ToLower(hash))
 	}
 }
 
-func toFiles(paths []string, mask sum.Mask) []sum.File {
+func toFiles(paths []string, mask sum.Mask, alg *sum.HashAlg) []sum.File {
 	var out []sum.File
 	for _, path := range paths {
-		out = append(out, sum.File{path, mask})
+		out = append(out, sum.File{alg, path, mask})
 	}
 	return out
 }

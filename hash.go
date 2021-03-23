@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/sha512"
+	"fmt"
 	"hash"
 	"hash/adler32"
 	"hash/crc32"
@@ -17,11 +18,12 @@ import (
 	"golang.org/x/crypto/md4"
 	"golang.org/x/crypto/ripemd160"
 	"golang.org/x/crypto/sha3"
+
+	"github.com/sclevine/xsum/sum"
 )
 
-type hashFunc func() hash.Hash
-
-func parseHash(h string) hashFunc {
+// note: algorithm names may not contain :
+func parseHash(h string) (*sum.HashAlg, error) {
 	h = toSingle(h, "-", "_", ".", "/")
 
 	// order:
@@ -29,83 +31,89 @@ func parseHash(h string) hashFunc {
 	// - shorter abbreviation before longer
 	// - no dash before dash
 
+	var (
+		name string
+		fn   func() hash.Hash
+	)
 	switch h {
 
 	// Cryptographic hashes
 
-	case "m4", "md4":
-		return md4.New
-	case "m5", "md5":
-		return md5.New
+	case "md4":
+		name, fn = "md4", md4.New
+	case "md5":
+		name, fn = "md5", md5.New
 
-	case "s1", "sha1":
-		return sha1.New
-	case "s2", "sha2", "s256", "sha256", "s2256", "s2-256", "sha2256", "sha2-256":
-		return sha256.New
-	case "s224", "sha224", "s2224", "s2-224", "sha2224", "sha2-224":
-		return sha256.New224
-	case "s512", "sha512", "s2512", "s2-512", "sha2512", "sha2-512":
-		return sha512.New
-	case "s384", "sha384", "s2384", "s2-384", "sha2384", "sha2-384":
-		return sha512.New384
-	case "s512224", "s512-224", "sha512224", "sha512-224", "s2512224", "s2-512-224", "sha2512224", "sha2-512-224":
-		return sha512.New512_224
-	case "s512256", "s512-256", "sha512256", "sha512-256", "s2512256", "s2-512-256", "sha2512256", "sha2-512-256":
-		return sha512.New512_256
-	case "s3224", "s3-224", "sha3224", "sha3-224":
-		return sha3.New224
-	case "s3", "sha3", "s3256", "s3-256", "sha3256", "sha3-256":
-		return sha3.New256
-	case "s3384", "s3-384", "sha3384", "sha3-384":
-		return sha3.New384
-	case "s3512", "s3-512", "sha3512", "sha3-512":
-		return sha3.New512
+	case "sha1":
+		name, fn = "sha1", sha1.New
+	case "sha256", "sha2256", "sha2-256":
+		name, fn = "sha256", sha256.New
+	case "sha224", "sha2224", "sha2-224":
+		name, fn = "sha224", sha256.New224
+	case "sha512", "sha2512", "sha2-512":
+		name, fn = "sha512", sha512.New
+	case "sha384", "sha2384", "sha2-384":
+		name, fn = "sha384", sha512.New384
+	case "sha512224", "sha512-224", "sha2512224", "sha2-512224", "sha2-512-224":
+		name, fn = "sha512-224", sha512.New512_224
+	case "sha512256", "sha512-256", "sha2512256", "sha2-512256", "sha2-512-256":
+		name, fn = "sha512-256", sha512.New512_256
+	case "sha3224", "sha3-224":
+		name, fn = "sha3-224", sha3.New224
+	case "sha3256", "sha3-256":
+		name, fn = "sha3-256", sha3.New256
+	case "sha3384", "sha3-384":
+		name, fn = "sha3-384", sha3.New384
+	case "sha3512", "sha3-512":
+		name, fn = "sha3-512", sha3.New512
 
-	case "b2s", "blake2s", "b2s256", "b2s-256", "blake2s256", "blake2s-256":
-		return mustHash(blake2s.New256)
-	case "b2b", "blake2b", "b2b256", "b2b-256", "blake2b256", "blake2b-256":
-		return mustHash(blake2b.New256)
+	case "b2s256", "b2s-256", "blake2s256", "blake2s-256":
+		name, fn = "blake2s256", mustHash(blake2s.New256)
+	case "b2b256", "b2b-256", "blake2b256", "blake2b-256":
+		name, fn = "blake2b256", mustHash(blake2b.New256)
 	case "b2b384", "b2b-384", "blake2b384", "blake2b-384":
-		return mustHash(blake2b.New384)
+		name, fn = "blake2b384", mustHash(blake2b.New384)
 	case "b2b512", "b2b-512", "blake2b512", "blake2b-512":
-		return mustHash(blake2b.New512)
+		name, fn = "blake2b384", mustHash(blake2b.New512)
 
-	case "r160", "ripemd160":
-		return ripemd160.New
+	case "rmd160", "rmd-160", "ripemd160", "ripemd-160":
+		name, fn = "rmd160", ripemd160.New
 
 	// Non-cryptographic hashes
 
-	case "c32", "crc32", "c32-ieee", "crc32-ieee":
-		return hashTab32(crc32.New, crc32.IEEETable)
-	case "c32-castagnoli", "crc32-castagnoli":
-		return hashTab32(crc32.New, crc32.MakeTable(crc32.Castagnoli))
-	case "c32-koopman", "crc32-koopman":
-		return hashTab32(crc32.New, crc32.MakeTable(crc32.Koopman))
-	case "c64", "crc64", "c64-iso", "crc64-iso":
-		return hashTab64(crc64.New, crc64.MakeTable(crc64.ISO))
-	case "c64-ecma", "crc64-ecma":
-		return hashTab64(crc64.New, crc64.MakeTable(crc64.ECMA))
+	case "crc32", "crc32ieee", "crc32-ieee":
+		name, fn = "crc32", hashTab32(crc32.New, crc32.IEEETable)
+	case "crc32c", "crc32-c", "crc32castagnoli", "crc32-castagnoli":
+		name, fn = "crc32c", hashTab32(crc32.New, crc32.MakeTable(crc32.Castagnoli))
+	case "crc32k", "crc32-k", "crc32koopman", "crc32-koopman":
+		name, fn = "crc32k", hashTab32(crc32.New, crc32.MakeTable(crc32.Koopman))
+	case "crc64iso", "crc64-iso":
+		name, fn = "crc64iso", hashTab64(crc64.New, crc64.MakeTable(crc64.ISO))
+	case "crc64ecma", "crc64-ecma":
+		name, fn = "crc64ecma", hashTab64(crc64.New, crc64.MakeTable(crc64.ECMA))
 
-	case "a32", "adler32":
-		return hash32(adler32.New)
+	case "adler32":
+		name, fn = "adler32", hash32(adler32.New)
 
-	case "f32", "fnv32":
-		return hash32(fnv.New32)
-	case "f32a", "fnv32a":
-		return hash32(fnv.New32a)
-	case "f64", "fnv64":
-		return hash64(fnv.New64)
-	case "f64a", "fnv64a":
-		return hash64(fnv.New64a)
-	case "f128", "fnv128":
-		return fnv.New128
-	case "f128a", "fnv128a":
-		return fnv.New128a
+	case "fnv32":
+		name, fn = "fnv32", hash32(fnv.New32)
+	case "fnv32a":
+		name, fn = "fnv32a", hash32(fnv.New32a)
+	case "fnv64":
+		name, fn = "fnv64", hash64(fnv.New64)
+	case "fnv64a":
+		name, fn = "fnv64a", hash64(fnv.New64a)
+	case "fnv128":
+		name, fn = "fnv128", fnv.New128
+	case "fnv128a":
+		name, fn = "fnv128a", fnv.New128a
+	default:
+		return nil, fmt.Errorf("unknown algorithm `%s'", h)
 	}
-	return nil
+	return &sum.HashAlg{Name: name, New: fn}, nil
 }
 
-func mustHash(hkf func([]byte) (hash.Hash, error)) hashFunc {
+func mustHash(hkf func([]byte) (hash.Hash, error)) func() hash.Hash {
 	if _, err := hkf(nil); err != nil {
 		panic(err)
 	}
@@ -118,25 +126,25 @@ func mustHash(hkf func([]byte) (hash.Hash, error)) hashFunc {
 	}
 }
 
-func hash32(hf func() hash.Hash32) hashFunc {
+func hash32(hf func() hash.Hash32) func() hash.Hash {
 	return func() hash.Hash {
 		return hf()
 	}
 }
 
-func hash64(hf func() hash.Hash64) hashFunc {
+func hash64(hf func() hash.Hash64) func() hash.Hash {
 	return func() hash.Hash {
 		return hf()
 	}
 }
 
-func hashTab32(hf func(*crc32.Table) hash.Hash32, tab *crc32.Table) hashFunc {
+func hashTab32(hf func(*crc32.Table) hash.Hash32, tab *crc32.Table) func() hash.Hash {
 	return func() hash.Hash {
 		return hf(tab)
 	}
 }
 
-func hashTab64(hf func(*crc64.Table) hash.Hash64, tab *crc64.Table) hashFunc {
+func hashTab64(hf func(*crc64.Table) hash.Hash64, tab *crc64.Table) func() hash.Hash {
 	return func() hash.Hash {
 		return hf(tab)
 	}
