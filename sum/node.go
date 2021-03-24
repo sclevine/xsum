@@ -39,17 +39,6 @@ func (n *Node) SumHex() string {
 	return hex.EncodeToString(n.Sum)
 }
 
-//func (n *Node) String() string {
-//	// FIXME: disallow : in hash name
-//	if !n.Hash.Merkel {
-//		return hex.EncodeToString(n.Sum)
-//	}
-//	if n.Mode&os.ModeDir != 0 || n.Mask.Attr&AttrInclude != 0 {
-//		return n.Hash.Name + ":" + hex.EncodeToString(n.Sum) + ":" + n.Mask.String()
-//	}
-//	return n.Hash.Name + ":" + hex.EncodeToString(n.Sum)
-//}
-
 func (n *Node) dirSig(filename string) ([]byte, error) {
 	nameSum, err := n.Alg.Bytes([]byte(filename))
 	if err != nil {

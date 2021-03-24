@@ -149,8 +149,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 			}
 			var name string
 			if !portable {
-				// FIXME: this uses resolved link names on -l and should not
-				// TODO: better if we store filename?
+				// safe because subdir nodes have generated bases
 				name = filepath.Base(n.Path)
 			}
 			b, err := n.dirSig(name)
@@ -211,7 +210,6 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		if follow {
 			rOnce.Do(s.release)
 			sOnce.Do(nil)
-			// TODO: if symlinks are followed in subdir case, consider correcting name sum
 			n := s.walkFile(File{Path: link, Mask: file.Mask}, subdir, sched)
 			n.Path = file.Path
 			return n

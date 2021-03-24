@@ -18,6 +18,7 @@ type Options struct {
 	Algorithm string `short:"a" long:"algorithm" default:"sha256" description:"Use hashing algorithm"`
 	Check     bool   `short:"c" long:"check" description:"Validate checksums"`
 	Mask      string `short:"m" long:"mask" description:"Apply mask as [777]7[+ugx...]:\n+u\tInclude UID\n+g\tInclude GID\n+x\tInclude extended attrs\n+s\tInclude special file modes\n+t\tInclude modified time\n+c\tInclude created time\n+i\tInclude top-level metadata\n+n\tExclude file names\n+e\tExclude data\n+l\tAlways follow symlinks"`
+	Write     string `short:"w" long:"write" optional:"yes" optional-value:"default" description:"Write a separate, adjacent file for each checksum\nUses filename with the algorithm as the file extension\nNOTE: use -w=ext to override, whitespace not permitted"`
 	Status    bool   `short:"s" long:"status" description:"With --check, suppress all output"`
 	Quiet     bool   `short:"q" long:"quiet" description:"With --check, suppress passing checksums"`
 
@@ -27,7 +28,6 @@ type Options struct {
 	Full       bool `short:"f" long:"full" description:"Full mode (implies: -m 7777+ug)"`
 	Extended   bool `short:"x" long:"extended" description:"Extended mode (implies: -m 7777+ugxs)"`
 	Everything bool `short:"e" long:"everything" description:"Everything mode (implies: -m 7777+ugxsct)"`
-
 	Inclusive bool `short:"i" long:"inclusive" description:"Include top-level metadata (adds +i to mask)"`
 	Follow    bool `short:"l" long:"follow" description:"Follow symlinks (adds +l to mask)"`
 
@@ -81,6 +81,9 @@ func main() {
 	if opts.Check && opts.Opaque {
 		log.Fatal("Only one of -c, -o permitted.")
 	}
+	if opts.Check && opts.Write != "" {
+		log.Fatal("Only one of -c, -w permitted.")
+	}
 
 	level := outputNormal
 	if opts.Status {
@@ -124,7 +127,14 @@ func main() {
 		if opts.Follow {
 			mask.Attr |= sum.AttrFollow
 		}
-		output(opts.Args.Paths, mask, alg, basic, opts.Opaque)
+		if opts.Write != "" {
+			if opts.Write == "default" {
+				opts.Write = opts.Algorithm
+			}
+			write(opts.Args.Paths, mask, alg, basic, opts.Opaque, opts.Write)
+		} else {
+			output(opts.Args.Paths, mask, alg, basic, opts.Opaque)
+		}
 	}
 }
 
@@ -134,16 +144,21 @@ func output(paths []string, mask sum.Mask, hash *sum.HashAlg, basic, opaque bool
 			log.Printf("xsum: %s", n.Err)
 			return nil
 		}
-		if basic {
-			fmt.Println(n.SumHex() + "  " + filepath.ToSlash(n.Path))
-		} else if opaque {
-			fmt.Println(n.Hex() + "  " + filepath.ToSlash(n.Path))
-		} else {
-			fmt.Println(n.String() + "  " + filepath.ToSlash(n.Path))
-		}
+		fmt.Println(checksum(n, basic, opaque))
 		return nil
 	}); err != nil {
 		log.Fatalf("xsum: %s", err)
+	}
+}
+
+func checksum(n *sum.Node, basic, opaque bool) string {
+	switch {
+	case basic:
+		return n.SumHex() + "  " + filepath.ToSlash(n.Path)
+	case opaque:
+		return n.Hex() + "  " + filepath.ToSlash(n.Path)
+	default:
+		return n.String() + "  " + filepath.ToSlash(n.Path)
 	}
 }
 
@@ -153,17 +168,20 @@ func write(paths []string, mask sum.Mask, alg *sum.HashAlg, basic, opaque bool, 
 			log.Printf("xsum: %s", n.Err)
 			return nil
 		}
-		// FIXME: deal with .. and .
 		if ext == "" {
 			ext = alg.Name
 		}
-		f, err := os.OpenFile(n.Path+"."+ext, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0777)
+		abs, err := filepath.Abs(n.Path)
+		if err != nil {
+			log.Printf("xsum: %s", n.Err)
+			return nil
+		}
+		f, err := os.OpenFile(abs+"."+ext, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0777)
 		if err != nil {
 			log.Printf("xsum: %s", err)
 			return nil
 		}
-		// FIXME: support all three output formats
-		if _, err := fmt.Fprintln(f, n.String()+"  "+filepath.ToSlash(n.Path)); err != nil {
+		if _, err := fmt.Fprintln(f, checksum(n, basic, opaque)); err != nil {
 			f.Close()
 			log.Printf("xsum: %s", err)
 			return nil
