@@ -15,26 +15,29 @@ import (
 )
 
 type Options struct {
-	Algorithm string `short:"a" long:"algorithm" default:"sha256" description:"Use hashing algorithm"`
-	Check     bool   `short:"c" long:"check" description:"Validate checksums"`
-	Mask      string `short:"m" long:"mask" description:"Apply mask as [777]7[+ugx...]:\n+u\tInclude UID\n+g\tInclude GID\n+x\tInclude extended attrs\n+s\tInclude special file modes\n+t\tInclude modified time\n+c\tInclude created time\n+i\tInclude top-level metadata\n+n\tExclude file names\n+e\tExclude data\n+l\tAlways follow symlinks"`
-	Write     string `short:"w" long:"write" optional:"yes" optional-value:"default" description:"Write a separate, adjacent file for each checksum\nUses filename with the algorithm as the file extension\nNOTE: use -w=ext to override, whitespace not permitted"`
-	Status    bool   `short:"s" long:"status" description:"With --check, suppress all output"`
-	Quiet     bool   `short:"q" long:"quiet" description:"With --check, suppress passing checksums"`
+	General struct {
+		Algorithm string `short:"a" long:"algorithm" default:"sha256" description:"Use hashing algorithm"`
+		Write     string `short:"w" long:"write" optional:"yes" optional-value:"default" description:"Write a separate, adjacent file for each checksum\nBy default, filename will be [orig-name].[alg]\nUse -w=ext or -wext to override extension (no space!)"`
+		Check     bool   `short:"c" long:"check" description:"Validate checksums"`
+		Status    bool   `short:"s" long:"status" description:"With --check, suppress all output"`
+		Quiet     bool   `short:"q" long:"quiet" description:"With --check, suppress passing checksums"`
+	} `group:"General Options"`
 
-	Directory  bool `short:"d" long:"directories" description:"Directory mode, enables masks (implies: -m 0000)"`
-	Portable   bool `short:"p" long:"portable" description:"Portable mode, exclude names (implies: -m 0000+p)"`
-	Git        bool `short:"g" long:"git" description:"Git mode (implies: -m 0100)"`
-	Full       bool `short:"f" long:"full" description:"Full mode (implies: -m 7777+ug)"`
-	Extended   bool `short:"x" long:"extended" description:"Extended mode (implies: -m 7777+ugxs)"`
-	Everything bool `short:"e" long:"everything" description:"Everything mode (implies: -m 7777+ugxsct)"`
-	Inclusive bool `short:"i" long:"inclusive" description:"Include top-level metadata (adds +i to mask)"`
-	Follow    bool `short:"l" long:"follow" description:"Follow symlinks (adds +l to mask)"`
-
-	Opaque bool `short:"o" long:"opaque" description:"Encode mask to opaque, fixed-length hex"`
+	Mask struct {
+		Mask       string `short:"m" long:"mask" description:"Apply mask as [777]7[+ugx...]:\n+u\tInclude UID\n+g\tInclude GID\n+x\tInclude extended attrs\n+s\tInclude special file modes\n+t\tInclude modified time\n+c\tInclude created time\n+i\tInclude top-level metadata\n+n\tExclude file names\n+e\tExclude data\n+l\tAlways follow symlinks"`
+		Directory  bool   `short:"d" long:"directories" description:"Directory mode, enables masks (implies: -m 0000)"`
+		Portable   bool   `short:"p" long:"portable" description:"Portable mode, exclude names (implies: -m 0000+p)"`
+		Git        bool   `short:"g" long:"git" description:"Git mode (implies: -m 0100)"`
+		Full       bool   `short:"f" long:"full" description:"Full mode (implies: -m 7777+ug)"`
+		Extended   bool   `short:"x" long:"extended" description:"Extended mode (implies: -m 7777+ugxs)"`
+		Everything bool   `short:"e" long:"everything" description:"Everything mode (implies: -m 7777+ugxsct)"`
+		Inclusive  bool   `short:"i" long:"inclusive" description:"Include top-level metadata (adds +i to mask)"`
+		Follow     bool   `short:"l" long:"follow" description:"Follow symlinks (adds +l to mask)"`
+		Opaque     bool   `short:"o" long:"opaque" description:"Encode mask to opaque, fixed-length hex"`
+	} `group:"Mask Options"`
 
 	Args struct {
-		Paths []string `required:"1"`
+		Paths []string `required:"1" positional-arg-name:"paths"`
 	} `positional-args:"yes"`
 }
 
@@ -62,78 +65,78 @@ func main() {
 		log.Fatalf("Unparsable arguments: %s", strings.Join(rest, ", "))
 	}
 	if multipleTrue(
-		opts.Check,
-		opts.Mask != "",
-		opts.Directory,
-		opts.Portable,
-		opts.Git,
-		opts.Full,
-		opts.Extended,
-		opts.Everything) {
+		opts.General.Check,
+		opts.Mask.Mask != "",
+		opts.Mask.Directory,
+		opts.Mask.Portable,
+		opts.Mask.Git,
+		opts.Mask.Full,
+		opts.Mask.Extended,
+		opts.Mask.Everything) {
 		log.Fatal("Only one of -c, -m, -p, -g, -f, -x, or -e permitted.")
 	}
-	if opts.Check && opts.Inclusive {
+	if opts.General.Check && opts.Mask.Inclusive {
 		log.Fatal("Only one of -c, -i permitted.")
 	}
-	if opts.Check && opts.Follow {
+	if opts.General.Check && opts.Mask.Follow {
 		log.Fatal("Only one of -c, -l permitted.")
 	}
-	if opts.Check && opts.Opaque {
+	if opts.General.Check && opts.Mask.Opaque {
 		log.Fatal("Only one of -c, -o permitted.")
 	}
-	if opts.Check && opts.Write != "" {
+	if opts.General.Check && opts.General.Write != "" {
 		log.Fatal("Only one of -c, -w permitted.")
 	}
 
 	level := outputNormal
-	if opts.Status {
+	if opts.General.Status {
 		level = outputStatus
-	} else if opts.Quiet {
+	} else if opts.General.Quiet {
 		level = outputQuiet
 	}
-	alg, err := parseHash(opts.Algorithm)
+	alg, err := parseHash(opts.General.Algorithm)
 	if err != nil {
 		log.Fatalf("Invalid algorithm: %s", err)
 	}
-	if opts.Check {
+	if opts.General.Check {
 		check(opts.Args.Paths, alg, level)
 	} else {
 		basic := false
 		var mask sum.Mask
 		switch {
-		case opts.Mask != "":
-			mask, err = sum.NewMaskString(opts.Mask)
+		case opts.Mask.Mask != "":
+			mask, err = sum.NewMaskString(opts.Mask.Mask)
 			if err != nil {
 				log.Fatalf("Invalid mask: %s", err)
 			}
-		case opts.Portable:
+		case opts.Mask.Portable:
 			mask = sum.NewMask(0000, sum.AttrNoData)
-		case opts.Git:
+		case opts.Mask.Git:
 			mask = sum.NewMask(0100, sum.AttrEmpty)
-		case opts.Full:
+		case opts.Mask.Full:
 			mask = sum.NewMask(7777, sum.AttrUID|sum.AttrGID)
-		case opts.Extended:
+		case opts.Mask.Extended:
 			mask = sum.NewMask(7777, sum.AttrUID|sum.AttrGID|sum.AttrX|sum.AttrSpecial)
-		case opts.Everything:
+		case opts.Mask.Everything:
 			mask = sum.NewMask(7777, sum.AttrUID|sum.AttrGID|sum.AttrX|sum.AttrSpecial|sum.AttrCtime|sum.AttrMtime)
-		case opts.Directory, opts.Inclusive, opts.Follow, opts.Opaque: // inclusive+follow+opaque must be last on this list
+		case opts.Mask.Directory, opts.Mask.Inclusive, opts.Mask.Follow, opts.Mask.Opaque: // inclusive+follow+opaque must be last on this list
 			mask = sum.NewMask(0000, sum.AttrEmpty)
 		default:
 			basic = true
 		}
-		if opts.Inclusive {
+		if opts.Mask.Inclusive {
 			mask.Attr |= sum.AttrInclusive
 		}
-		if opts.Follow {
+		if opts.Mask.Follow {
 			mask.Attr |= sum.AttrFollow
 		}
-		if opts.Write != "" {
-			if opts.Write == "default" {
-				opts.Write = opts.Algorithm
+		if opts.General.Write != "" {
+			if opts.General.Write == "default" {
+				opts.General.Write = opts.General.Algorithm
 			}
-			write(opts.Args.Paths, mask, alg, basic, opts.Opaque, opts.Write)
+			write(opts.Args.Paths, mask, alg, basic, opts.Mask.Opaque, opts.General.Write)
 		} else {
-			output(opts.Args.Paths, mask, alg, basic, opts.Opaque)
+			output(opts.Args.Paths, mask, alg, basic, opts.Mask.Opaque)
 		}
 	}
 }
