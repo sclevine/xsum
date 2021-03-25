@@ -25,19 +25,19 @@ type Options struct {
 
 	Mask struct {
 		Mask       string `short:"m" long:"mask" description:"Apply mask as [777]7[+ugx...]:\n+u\tInclude UID\n+g\tInclude GID\n+x\tInclude extended attrs\n+s\tInclude special file modes\n+t\tInclude modified time\n+c\tInclude created time\n+i\tInclude top-level metadata\n+n\tExclude file names\n+e\tExclude data\n+l\tAlways follow symlinks"`
-		Directory  bool   `short:"d" long:"directories" description:"Directory mode, enables masks (implies: -m 0000)"`
+		Directory  bool   `short:"d" long:"dirs" description:"Directory mode (implies: -m 0000)"`
 		Portable   bool   `short:"p" long:"portable" description:"Portable mode, exclude names (implies: -m 0000+p)"`
 		Git        bool   `short:"g" long:"git" description:"Git mode (implies: -m 0100)"`
 		Full       bool   `short:"f" long:"full" description:"Full mode (implies: -m 7777+ug)"`
 		Extended   bool   `short:"x" long:"extended" description:"Extended mode (implies: -m 7777+ugxs)"`
 		Everything bool   `short:"e" long:"everything" description:"Everything mode (implies: -m 7777+ugxsct)"`
-		Inclusive  bool   `short:"i" long:"inclusive" description:"Include top-level metadata (adds +i to mask)"`
-		Follow     bool   `short:"l" long:"follow" description:"Follow symlinks (adds +l to mask)"`
-		Opaque     bool   `short:"o" long:"opaque" description:"Encode mask to opaque, fixed-length hex"`
+		Inclusive  bool   `short:"i" long:"inclusive" description:"Include top-level metadata (enables mask, adds +i)"`
+		Follow     bool   `short:"l" long:"follow" description:"Follow symlinks (enables mask, adds +l)"`
+		Opaque     bool   `short:"o" long:"opaque" description:"Encode mask to opaque, fixed-length hex (enables mask)"`
 	} `group:"Mask Options"`
 
 	Args struct {
-		Paths []string `required:"1" positional-arg-name:"paths"`
+		Paths []string `positional-arg-name:"paths"`
 	} `positional-args:"yes"`
 }
 
@@ -110,7 +110,7 @@ func main() {
 				log.Fatalf("Invalid mask: %s", err)
 			}
 		case opts.Mask.Portable:
-			mask = sum.NewMask(0000, sum.AttrNoData)
+			mask = sum.NewMask(0000, sum.AttrNoName)
 		case opts.Mask.Git:
 			mask = sum.NewMask(0100, sum.AttrEmpty)
 		case opts.Mask.Full:
@@ -204,11 +204,26 @@ func check(indexes []string, alg *sum.HashAlg, level outputLevel) {
 	sums := make(chan string, 1)
 	go func() {
 		defer close(files)
-		for _, path := range indexes {
-			readIndex(path, alg, func(f sum.File, sum string) {
+		if len(indexes) == 0 {
+			readIndexStdin(alg, func(f sum.File, sum string) {
 				files <- f
 				sums <- sum
 			})
+			return
+		}
+		for _, path := range indexes {
+			switch path {
+			case "-":
+				readIndexStdin(alg, func(f sum.File, sum string) {
+					files <- f
+					sums <- sum
+				})
+			default:
+				readIndexPath(path, alg, func(f sum.File, sum string) {
+					files <- f
+					sums <- sum
+				})
+			}
 		}
 	}()
 	failed := 0
@@ -242,13 +257,21 @@ func check(indexes []string, alg *sum.HashAlg, level outputLevel) {
 	}
 }
 
-func readIndex(path string, alg *sum.HashAlg, fn func(sum.File, string)) {
+func readIndexPath(path string, alg *sum.HashAlg, fn func(sum.File, string)) {
 	f, err := os.Open(path)
 	if err != nil {
 		log.Printf("xsum: %s", err)
 		return
 	}
 	defer f.Close()
+	readIndex(f, path, alg, fn)
+}
+
+func readIndexStdin(alg *sum.HashAlg, fn func(sum.File, string)) {
+	readIndex(os.Stdin, "standard input", alg, fn)
+}
+
+func readIndex(f *os.File, path string, alg *sum.HashAlg, fn func(sum.File, string)) {
 	scan := bufio.NewScanner(f)
 	for scan.Scan() {
 		entry := scan.Text()
@@ -263,6 +286,7 @@ func readIndex(path string, alg *sum.HashAlg, fn func(sum.File, string)) {
 		var mask sum.Mask
 
 		if p := strings.SplitN(hash, ":", 3); len(p) > 1 {
+			var err error
 			alg, err = parseHash(p[0])
 			if err != nil {
 				log.Printf("xsum: %s: invalid algorithm: %s", path, err)

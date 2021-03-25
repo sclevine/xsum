@@ -14,21 +14,21 @@ import (
 
 var (
 	ErrSpecialFile = errors.New("is a special file")
-	ErrDirectory = errors.New("is a directory")
+	ErrDirectory   = errors.New("is a directory")
 	ErrNoStat      = errors.New("stat data unavailable")
 
 	DefaultLock = semaphore.NewWeighted(int64(runtime.NumCPU()))
 )
 
 type Sum struct {
-	Sem         *semaphore.Weighted
-	SkipSpecial bool
+	Sem          *semaphore.Weighted
+	DataFileOnly bool
 }
 
 func New(basic bool) *Sum {
 	return &Sum{
-		Sem:         DefaultLock,
-		SkipSpecial: basic,
+		Sem:          DefaultLock,
+		DataFileOnly: basic,
 	}
 }
 
@@ -122,7 +122,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 
 	switch {
 	case fi.IsDir():
-		if s.SkipSpecial {
+		if s.DataFileOnly {
 			return &Node{File: file, Err: pathErrSimple(file.Path, ErrDirectory)}
 		}
 		names, err := readDirUnordered(file.Path)
@@ -174,6 +174,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 
 	case fi.Mode().IsRegular():
 		sOnce.Do(sched)
+		file.Mask.Attr &= ^AttrNoName
 		var sum []byte
 		if noData {
 			sum = file.Alg.Zero()
@@ -214,6 +215,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 			n.Path = file.Path
 			return n
 		}
+		file.Mask.Attr &= ^AttrNoName
 		sum, err := file.Alg.Bytes([]byte(link))
 		if err != nil {
 			return pathErrNode("hash", file, subdir, err)
@@ -229,10 +231,11 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		return &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
 	default:
 		sOnce.Do(sched)
-		if s.SkipSpecial || (!inclusive && !subdir) {
+		file.Mask.Attr &= ^AttrNoName
+		file.Mask.Attr |= AttrNoData
+		if s.DataFileOnly || (!inclusive && !subdir) {
 			return &Node{File: file, Err: pathErrSimple(file.Path, ErrSpecialFile)}
 		}
-		file.Mask.Attr |= AttrNoData
 
 		if !subdir {
 			node := &Node{File: file, Sum: file.Alg.Zero(), Mode: fi.Mode(), Sys: getSysProps(fi)}
