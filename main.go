@@ -171,6 +171,10 @@ func write(paths []string, mask sum.Mask, alg *sum.HashAlg, basic, opaque bool, 
 			log.Printf("xsum: %s", n.Err)
 			return nil
 		}
+		if n.Stdin {
+			log.Print("xsum: skipping standard input")
+			return nil
+		}
 		if ext == "" {
 			ext = alg.Name
 		}
@@ -315,8 +319,25 @@ func readIndex(f *os.File, path string, alg *sum.HashAlg, fn func(sum.File, stri
 
 func toFiles(paths []string, mask sum.Mask, alg *sum.HashAlg) []sum.File {
 	var out []sum.File
+	if len(paths) == 0 {
+		out = append(out, sum.File{
+			Alg:   alg,
+			Path:  "-",
+			Mask:  mask,
+			Stdin: true,
+		})
+	}
 	for _, path := range paths {
-		out = append(out, sum.File{alg, path, mask})
+		stdin := false
+		if path == "-" {
+			stdin = true
+		}
+		out = append(out, sum.File{
+			Alg:   alg,
+			Path:  path,
+			Mask:  mask,
+			Stdin: stdin,
+		})
 	}
 	return out
 }

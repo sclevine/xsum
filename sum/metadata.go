@@ -89,6 +89,9 @@ func (a Attr) Hex() string {
 type Mode uint16
 
 func NewModeString(s string) (Mode, error) {
+	if s == "" {
+		return 0, nil
+	}
 	mode64, err := strconv.ParseUint(s, 8, 12)
 	if err != nil {
 		return 0, fmt.Errorf("invalid mode `%s'", s)

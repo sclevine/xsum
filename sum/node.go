@@ -4,13 +4,29 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"io"
 	"os"
 )
 
 type File struct {
-	Alg  *HashAlg
-	Path string
-	Mask Mask
+	Alg   *HashAlg
+	Path  string
+	Mask  Mask
+	Stdin bool
+}
+
+func (f *File) Open() (io.ReadCloser, error) {
+	if f.Stdin {
+		return io.NopCloser(os.Stdin), nil
+	}
+	return os.Open(f.Path)
+}
+
+func (f *File) Stat() (os.FileInfo, error) {
+	if f.Stdin {
+		return os.Stdin.Stat()
+	}
+	return os.Lstat(f.Path)
 }
 
 type Node struct {

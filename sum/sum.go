@@ -13,22 +13,21 @@ import (
 )
 
 var (
-	ErrSpecialFile = errors.New("is a special file")
-	ErrDirectory   = errors.New("is a directory")
-	ErrNoStat      = errors.New("stat data unavailable")
+	ErrDirectory = errors.New("is a directory")
+	ErrNoStat    = errors.New("stat data unavailable")
 
 	DefaultLock = semaphore.NewWeighted(int64(runtime.NumCPU()))
 )
 
 type Sum struct {
-	Sem          *semaphore.Weighted
-	DataFileOnly bool
+	Sem      *semaphore.Weighted
+	SkipDirs bool
 }
 
 func New(basic bool) *Sum {
 	return &Sum{
-		Sem:          DefaultLock,
-		DataFileOnly: basic,
+		Sem:      DefaultLock,
+		SkipDirs: basic,
 	}
 }
 
@@ -52,7 +51,9 @@ func (s *Sum) Each(files <-chan File, f func(*Node) error) error {
 		for file := range files {
 			file := file
 			var wg sync.WaitGroup
-			file.Path = filepath.Clean(file.Path)
+			if file.Path != "" {
+				file.Path = filepath.Clean(file.Path)
+			}
 			nodeRec := make(chan *Node)
 			queue.enqueue(nodeRec)
 			wg.Add(1)
@@ -107,9 +108,9 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 	sOnce := doOnce(true)
 	defer sOnce.Do(sched)
 
-	fi, err := os.Lstat(file.Path)
+	fi, err := file.Stat()
 	if os.IsNotExist(err) {
-		return &Node{File: file, Err: pathNewErr("does not exist", file.Path, subdir)}
+		return &Node{File: file, Err: pathErrSimple(file.Path, err)}
 	}
 	if err != nil {
 		return pathErrNode("stat", file, subdir, err)
@@ -122,7 +123,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 
 	switch {
 	case fi.IsDir():
-		if s.DataFileOnly {
+		if s.SkipDirs {
 			return &Node{File: file, Err: pathErrSimple(file.Path, ErrDirectory)}
 		}
 		names, err := readDirUnordered(file.Path)
@@ -172,14 +173,54 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		}
 		return &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
 
-	case fi.Mode().IsRegular():
-		sOnce.Do(sched)
+	case fi.Mode()&os.ModeSymlink != 0:
+		if !follow {
+			// announce schedule early if not following link
+			sOnce.Do(sched)
+		}
+		link, err := os.Readlink(file.Path)
+		if err != nil {
+			return pathErrNode("read link", file, subdir, err)
+		}
+		if follow {
+			rOnce.Do(s.release)
+			sOnce.Do(nil)
+			n := s.walkFile(File{Path: link, Mask: file.Mask}, subdir, sched)
+			n.Path = file.Path
+			return n
+		}
 		file.Mask.Attr &= ^AttrNoName
 		var sum []byte
 		if noData {
+			file.Mask.Attr |= AttrNoData
 			sum = file.Alg.Zero()
 		} else {
-			f, err := os.Open(file.Path)
+			file.Mask.Attr &= ^AttrNoData
+			sum, err = file.Alg.Bytes([]byte(link))
+			if err != nil {
+				return pathErrNode("hash", file, subdir, err)
+			}
+		}
+		if inclusive && !subdir {
+			node := &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
+			node.Sum, err = node.hashFileSig()
+			if err != nil {
+				return pathErrNode("hash metadata", file, subdir, err)
+			}
+			return node
+		}
+		return &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
+
+	default:
+		sOnce.Do(sched)
+		file.Mask.Attr &= ^AttrNoName
+		var sum []byte
+		if noData || (!fi.Mode().IsRegular() && (inclusive || subdir)) {
+			file.Mask.Attr |= AttrNoData
+			sum = file.Alg.Zero()
+		} else {
+			file.Mask.Attr &= ^AttrNoData
+			f, err := file.Open()
 			if err != nil {
 				return pathErrNode("open", file, subdir, err)
 			}
@@ -198,54 +239,6 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 			return node
 		}
 		return &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
-
-	case fi.Mode()&os.ModeSymlink != 0:
-		if !follow {
-			// announce schedule early if not following link
-			sOnce.Do(sched)
-		}
-		link, err := os.Readlink(file.Path)
-		if err != nil {
-			return pathErrNode("read link", file, subdir, err)
-		}
-		if follow {
-			rOnce.Do(s.release)
-			sOnce.Do(nil)
-			n := s.walkFile(File{Path: link, Mask: file.Mask}, subdir, sched)
-			n.Path = file.Path
-			return n
-		}
-		file.Mask.Attr &= ^AttrNoName
-		sum, err := file.Alg.Bytes([]byte(link))
-		if err != nil {
-			return pathErrNode("hash", file, subdir, err)
-		}
-		if inclusive && !subdir {
-			node := &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
-			node.Sum, err = node.hashFileSig()
-			if err != nil {
-				return pathErrNode("hash metadata", file, subdir, err)
-			}
-			return node
-		}
-		return &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
-	default:
-		sOnce.Do(sched)
-		file.Mask.Attr &= ^AttrNoName
-		file.Mask.Attr |= AttrNoData
-		if s.DataFileOnly || (!inclusive && !subdir) {
-			return &Node{File: file, Err: pathErrSimple(file.Path, ErrSpecialFile)}
-		}
-
-		if !subdir {
-			node := &Node{File: file, Sum: file.Alg.Zero(), Mode: fi.Mode(), Sys: getSysProps(fi)}
-			node.Sum, err = node.hashFileSig()
-			if err != nil {
-				return pathErrNode("hash metadata", file, subdir, err)
-			}
-			return node
-		}
-		return &Node{File: file, Sum: file.Alg.Zero(), Mode: fi.Mode(), Sys: getSysProps(fi)}
 	}
 }
 
@@ -258,7 +251,11 @@ func (s *Sum) walkDir(file File, names []string) <-chan *Node {
 		swg.Add(1)
 		go func() {
 			defer nwg.Done()
-			nodes <- s.walkFile(File{file.Alg, filepath.Join(file.Path, name), file.Mask}, true, swg.Done)
+			nodes <- s.walkFile(File{
+				Alg:  file.Alg,
+				Path: filepath.Join(file.Path, name),
+				Mask: file.Mask,
+			}, true, swg.Done)
 		}()
 	}
 	go func() {
@@ -288,26 +285,21 @@ func pathErrNode(verb string, file File, subdir bool, err error) *Node {
 func pathErr(verb, path string, subdir bool, err error) error {
 	var msg string
 	pErr := &os.PathError{}
+	if errors.As(err, &pErr) {
+		err = pErr.Err
+	}
 	if !subdir {
 		msg = "%[2]s: failed to %[1]s: %[3]w"
-	} else if errors.As(err, &pErr) {
-		msg = "failed to %[1]s: %[3]w"
-	} else {
+	}  else {
 		msg = "failed to %s `%s': %w"
 	}
 	return fmt.Errorf(msg, verb, path, err)
 }
 
 func pathErrSimple(path string, err error) error {
-	return fmt.Errorf("%s: %w", path, err)
-}
-
-func pathNewErr(state, path string, subdir bool) error {
-	var msg string
-	if subdir {
-		msg = "`%s' %s"
-	} else {
-		msg = "%s: %s"
+	pErr := &os.PathError{}
+	if errors.As(err, &pErr) {
+		err = pErr.Err
 	}
-	return fmt.Errorf(msg, path, state)
+	return fmt.Errorf("%s: %w", path, err)
 }
