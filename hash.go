@@ -11,6 +11,7 @@ import (
 	"hash/crc32"
 	"hash/crc64"
 	"hash/fnv"
+	"os/exec"
 	"strings"
 
 	"golang.org/x/crypto/blake2b"
@@ -23,94 +24,93 @@ import (
 )
 
 // note: algorithm names may not contain :
-func parseHash(h string) (*sum.HashAlg, error) {
-	h = toSingle(h, "-", "_", ".", "/")
-
+func parseHash(alg string) (sum.Hash, error) {
 	// order:
 	// - least info to most info
 	// - shorter abbreviation before longer
 	// - no dash before dash
 
-	var (
-		name string
-		fn   func() hash.Hash
-	)
-	switch h {
+	switch toSingle(alg, "-", "_", ".", "/") {
 
 	// Cryptographic hashes
 
 	case "md4":
-		name, fn = "md4", md4.New
+		return sum.NewHashAlg("md4", md4.New), nil
 	case "md5":
-		name, fn = "md5", md5.New
+		return sum.NewHashAlg("md5", md5.New), nil
 
 	case "sha1":
-		name, fn = "sha1", sha1.New
+		return sum.NewHashAlg("sha1", sha1.New), nil
 	case "sha256", "sha2256", "sha2-256":
-		name, fn = "sha256", sha256.New
+		return sum.NewHashAlg("sha256", sha256.New), nil
 	case "sha224", "sha2224", "sha2-224":
-		name, fn = "sha224", sha256.New224
+		return sum.NewHashAlg("sha224", sha256.New224), nil
 	case "sha512", "sha2512", "sha2-512":
-		name, fn = "sha512", sha512.New
+		return sum.NewHashAlg("sha512", sha512.New), nil
 	case "sha384", "sha2384", "sha2-384":
-		name, fn = "sha384", sha512.New384
+		return sum.NewHashAlg("sha384", sha512.New384), nil
 	case "sha512224", "sha512-224", "sha2512224", "sha2-512224", "sha2-512-224":
-		name, fn = "sha512-224", sha512.New512_224
+		return sum.NewHashAlg("sha512-224", sha512.New512_224), nil
 	case "sha512256", "sha512-256", "sha2512256", "sha2-512256", "sha2-512-256":
-		name, fn = "sha512-256", sha512.New512_256
+		return sum.NewHashAlg("sha512-256", sha512.New512_256), nil
 	case "sha3224", "sha3-224":
-		name, fn = "sha3-224", sha3.New224
+		return sum.NewHashAlg("sha3-224", sha3.New224), nil
 	case "sha3256", "sha3-256":
-		name, fn = "sha3-256", sha3.New256
+		return sum.NewHashAlg("sha3-256", sha3.New256), nil
 	case "sha3384", "sha3-384":
-		name, fn = "sha3-384", sha3.New384
+		return sum.NewHashAlg("sha3-384", sha3.New384), nil
 	case "sha3512", "sha3-512":
-		name, fn = "sha3-512", sha3.New512
+		return sum.NewHashAlg("sha3-512", sha3.New512), nil
 
 	case "b2s256", "b2s-256", "blake2s256", "blake2s-256":
-		name, fn = "blake2s256", mustHash(blake2s.New256)
+		return sum.NewHashAlg("blake2s256", mustHash(blake2s.New256)), nil
 	case "b2b256", "b2b-256", "blake2b256", "blake2b-256":
-		name, fn = "blake2b256", mustHash(blake2b.New256)
+		return sum.NewHashAlg("blake2b256", mustHash(blake2b.New256)), nil
 	case "b2b384", "b2b-384", "blake2b384", "blake2b-384":
-		name, fn = "blake2b384", mustHash(blake2b.New384)
+		return sum.NewHashAlg("blake2b384", mustHash(blake2b.New384)), nil
 	case "b2b512", "b2b-512", "blake2b512", "blake2b-512":
-		name, fn = "blake2b384", mustHash(blake2b.New512)
+		return sum.NewHashAlg("blake2b384", mustHash(blake2b.New512)), nil
 
 	case "rmd160", "rmd-160", "ripemd160", "ripemd-160":
-		name, fn = "rmd160", ripemd160.New
+		return sum.NewHashAlg("rmd160", ripemd160.New), nil
 
 	// Non-cryptographic hashes
 
 	case "crc32", "crc32ieee", "crc32-ieee":
-		name, fn = "crc32", hashTab32(crc32.New, crc32.IEEETable)
+		return sum.NewHashAlg("crc32", hashTab32(crc32.New, crc32.IEEETable)), nil
 	case "crc32c", "crc32-c", "crc32castagnoli", "crc32-castagnoli":
-		name, fn = "crc32c", hashTab32(crc32.New, crc32.MakeTable(crc32.Castagnoli))
+		return sum.NewHashAlg("crc32c", hashTab32(crc32.New, crc32.MakeTable(crc32.Castagnoli))), nil
 	case "crc32k", "crc32-k", "crc32koopman", "crc32-koopman":
-		name, fn = "crc32k", hashTab32(crc32.New, crc32.MakeTable(crc32.Koopman))
+		return sum.NewHashAlg("crc32k", hashTab32(crc32.New, crc32.MakeTable(crc32.Koopman))), nil
 	case "crc64iso", "crc64-iso":
-		name, fn = "crc64iso", hashTab64(crc64.New, crc64.MakeTable(crc64.ISO))
+		return sum.NewHashAlg("crc64iso", hashTab64(crc64.New, crc64.MakeTable(crc64.ISO))), nil
 	case "crc64ecma", "crc64-ecma":
-		name, fn = "crc64ecma", hashTab64(crc64.New, crc64.MakeTable(crc64.ECMA))
+		return sum.NewHashAlg("crc64ecma", hashTab64(crc64.New, crc64.MakeTable(crc64.ECMA))), nil
 
 	case "adler32":
-		name, fn = "adler32", hash32(adler32.New)
+		return sum.NewHashAlg("adler32", hash32(adler32.New)), nil
 
 	case "fnv32":
-		name, fn = "fnv32", hash32(fnv.New32)
+		return sum.NewHashAlg("fnv32", hash32(fnv.New32)), nil
 	case "fnv32a":
-		name, fn = "fnv32a", hash32(fnv.New32a)
+		return sum.NewHashAlg("fnv32a", hash32(fnv.New32a)), nil
 	case "fnv64":
-		name, fn = "fnv64", hash64(fnv.New64)
+		return sum.NewHashAlg("fnv64", hash64(fnv.New64)), nil
 	case "fnv64a":
-		name, fn = "fnv64a", hash64(fnv.New64a)
+		return sum.NewHashAlg("fnv64a", hash64(fnv.New64a)), nil
 	case "fnv128":
-		name, fn = "fnv128", fnv.New128
+		return sum.NewHashAlg("fnv128", fnv.New128), nil
 	case "fnv128a":
-		name, fn = "fnv128a", fnv.New128a
+		return sum.NewHashAlg("fnv128a", fnv.New128a), nil
+
 	default:
-		return nil, fmt.Errorf("unknown algorithm `%s'", h)
+		// xsum plugin
+		p, err := exec.LookPath("xsum-" + alg)
+		if err != nil {
+			return nil, fmt.Errorf("unknown algorithm `%s'", alg)
+		}
+		return sum.NewHashPlugin(alg, p), nil
 	}
-	return &sum.HashAlg{Name: name, New: fn}, nil
 }
 
 func mustHash(hkf func([]byte) (hash.Hash, error)) func() hash.Hash {

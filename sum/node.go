@@ -9,7 +9,7 @@ import (
 )
 
 type File struct {
-	Alg   *HashAlg
+	Hash  Hash
 	Path  string
 	Mask  Mask
 	Stdin bool
@@ -39,16 +39,16 @@ type Node struct {
 
 func (n *Node) String() string {
 	if n.Mode&os.ModeDir != 0 || n.Mask.Attr&AttrInclusive != 0 {
-		return n.Alg.Name + ":" + n.SumHex() + ":" + n.Mask.String()
+		return n.Hash.String() + ":" + n.SumHex() + ":" + n.Mask.String()
 	}
-	return n.Alg.Name + ":" + n.SumHex()
+	return n.Hash.String() + ":" + n.SumHex()
 }
 
 func (n *Node) Hex() string {
 	if n.Mode&os.ModeDir != 0 || n.Mask.Attr&AttrInclusive != 0 {
-		return n.Alg.Name + ":" + n.SumHex() + ":" + n.Mask.Hex()
+		return n.Hash.String() + ":" + n.SumHex() + ":" + n.Mask.Hex()
 	}
-	return n.Alg.Name + ":" + n.SumHex()
+	return n.Hash.String() + ":" + n.SumHex()
 }
 
 func (n *Node) SumHex() string {
@@ -56,7 +56,7 @@ func (n *Node) SumHex() string {
 }
 
 func (n *Node) dirSig(filename string) ([]byte, error) {
-	nameSum, err := n.Alg.Bytes([]byte(filename))
+	nameSum, err := n.Hash.Metadata([]byte(filename))
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +97,7 @@ func (n *Node) hashFileSig() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return n.Alg.Bytes(sig)
+	return n.Hash.Metadata(sig)
 }
 
 const (
@@ -146,7 +146,7 @@ func (n *Node) hashSysattr() ([]byte, error) {
 
 	// out[52:68] - reserve for btime?
 
-	return n.Alg.Bytes(out[:])
+	return n.Hash.Metadata(out[:])
 }
 
 func (n *Node) hashXattr() ([]byte, error) {
@@ -155,7 +155,7 @@ func (n *Node) hashXattr() ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		return n.Alg.Bytes(xattr)
+		return n.Hash.Metadata(xattr)
 	}
 	return nil, nil
 }

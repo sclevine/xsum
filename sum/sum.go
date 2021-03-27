@@ -1,12 +1,14 @@
 package sum
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"sync"
 
 	"golang.org/x/sync/semaphore"
@@ -159,7 +161,10 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 			}
 			blocks = append(blocks, b)
 		}
-		sum, err := file.Alg.Blocks(blocks)
+		sort.Slice(blocks, func(i, j int) bool {
+			return bytes.Compare(blocks[i], blocks[j]) < 0
+		})
+		sum, err := file.Hash.Tree(blocks)
 		if err != nil {
 			return pathErrNode("hash", file, subdir, err)
 		}
@@ -193,10 +198,13 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		var sum []byte
 		if noData {
 			file.Mask.Attr |= AttrNoData
-			sum = file.Alg.Zero()
+			sum, err = file.Hash.Metadata(nil)
+			if err != nil {
+				return pathErrNode("hash", file, subdir, err)
+			}
 		} else {
 			file.Mask.Attr &= ^AttrNoData
-			sum, err = file.Alg.Bytes([]byte(link))
+			sum, err = file.Hash.Metadata([]byte(link))
 			if err != nil {
 				return pathErrNode("hash", file, subdir, err)
 			}
@@ -217,7 +225,10 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		var sum []byte
 		if noData || (!fi.Mode().IsRegular() && (inclusive || subdir)) {
 			file.Mask.Attr |= AttrNoData
-			sum = file.Alg.Zero()
+			sum, err = file.Hash.Data(bytes.NewReader(nil))
+			if err != nil {
+				return pathErrNode("hash", file, subdir, err)
+			}
 		} else {
 			file.Mask.Attr &= ^AttrNoData
 			f, err := file.Open()
@@ -225,7 +236,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 				return pathErrNode("open", file, subdir, err)
 			}
 			defer f.Close()
-			sum, err = file.Alg.Reader(f)
+			sum, err = file.Hash.Data(f)
 			if err != nil {
 				return pathErrNode("hash", file, subdir, err)
 			}
@@ -252,7 +263,7 @@ func (s *Sum) walkDir(file File, names []string) <-chan *Node {
 		go func() {
 			defer nwg.Done()
 			nodes <- s.walkFile(File{
-				Alg:  file.Alg,
+				Hash: file.Hash,
 				Path: filepath.Join(file.Path, name),
 				Mask: file.Mask,
 			}, true, swg.Done)
@@ -290,7 +301,7 @@ func pathErr(verb, path string, subdir bool, err error) error {
 	}
 	if !subdir {
 		msg = "%[2]s: failed to %[1]s: %[3]w"
-	}  else {
+	} else {
 		msg = "failed to %s `%s': %w"
 	}
 	return fmt.Errorf(msg, verb, path, err)

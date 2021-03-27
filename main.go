@@ -141,7 +141,7 @@ func main() {
 	}
 }
 
-func output(paths []string, mask sum.Mask, hash *sum.HashAlg, basic, opaque bool) {
+func output(paths []string, mask sum.Mask, hash sum.Hash, basic, opaque bool) {
 	if err := sum.New(basic).EachList(toFiles(paths, mask, hash), func(n *sum.Node) error {
 		if n.Err != nil {
 			log.Printf("xsum: %s", n.Err)
@@ -165,7 +165,7 @@ func checksum(n *sum.Node, basic, opaque bool) string {
 	}
 }
 
-func write(paths []string, mask sum.Mask, alg *sum.HashAlg, basic, opaque bool, ext string) {
+func write(paths []string, mask sum.Mask, alg sum.Hash, basic, opaque bool, ext string) {
 	if err := sum.New(basic).EachList(toFiles(paths, mask, alg), func(n *sum.Node) error {
 		if n.Err != nil {
 			log.Printf("xsum: %s", n.Err)
@@ -176,7 +176,7 @@ func write(paths []string, mask sum.Mask, alg *sum.HashAlg, basic, opaque bool, 
 			return nil
 		}
 		if ext == "" {
-			ext = alg.Name
+			ext = alg.String()
 		}
 		abs, err := filepath.Abs(n.Path)
 		if err != nil {
@@ -203,7 +203,7 @@ func write(paths []string, mask sum.Mask, alg *sum.HashAlg, basic, opaque bool, 
 	}
 }
 
-func check(indexes []string, alg *sum.HashAlg, level outputLevel) {
+func check(indexes []string, alg sum.Hash, level outputLevel) {
 	files := make(chan sum.File, 1)
 	sums := make(chan string, 1)
 	go func() {
@@ -261,7 +261,7 @@ func check(indexes []string, alg *sum.HashAlg, level outputLevel) {
 	}
 }
 
-func readIndexPath(path string, alg *sum.HashAlg, fn func(sum.File, string)) {
+func readIndexPath(path string, alg sum.Hash, fn func(sum.File, string)) {
 	f, err := os.Open(path)
 	if err != nil {
 		log.Printf("xsum: %s", err)
@@ -271,11 +271,11 @@ func readIndexPath(path string, alg *sum.HashAlg, fn func(sum.File, string)) {
 	readIndex(f, path, alg, fn)
 }
 
-func readIndexStdin(alg *sum.HashAlg, fn func(sum.File, string)) {
+func readIndexStdin(alg sum.Hash, fn func(sum.File, string)) {
 	readIndex(os.Stdin, "standard input", alg, fn)
 }
 
-func readIndex(f *os.File, path string, alg *sum.HashAlg, fn func(sum.File, string)) {
+func readIndex(f *os.File, path string, alg sum.Hash, fn func(sum.File, string)) {
 	scan := bufio.NewScanner(f)
 	for scan.Scan() {
 		entry := scan.Text()
@@ -313,15 +313,15 @@ func readIndex(f *os.File, path string, alg *sum.HashAlg, fn func(sum.File, stri
 				}
 			}
 		}
-		fn(sum.File{Alg: alg, Path: fpath, Mask: mask}, strings.ToLower(hash))
+		fn(sum.File{Hash: alg, Path: fpath, Mask: mask}, strings.ToLower(hash))
 	}
 }
 
-func toFiles(paths []string, mask sum.Mask, alg *sum.HashAlg) []sum.File {
+func toFiles(paths []string, mask sum.Mask, alg sum.Hash) []sum.File {
 	var out []sum.File
 	if len(paths) == 0 {
 		out = append(out, sum.File{
-			Alg:   alg,
+			Hash:  alg,
 			Path:  "-",
 			Mask:  mask,
 			Stdin: true,
@@ -333,7 +333,7 @@ func toFiles(paths []string, mask sum.Mask, alg *sum.HashAlg) []sum.File {
 			stdin = true
 		}
 		out = append(out, sum.File{
-			Alg:   alg,
+			Hash:  alg,
 			Path:  path,
 			Mask:  mask,
 			Stdin: stdin,
