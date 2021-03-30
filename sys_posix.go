@@ -1,6 +1,6 @@
 // +build linux darwin freebsd netbsd solaris
 
-package sum
+package xsum
 
 import (
 	"bytes"

@@ -1,4 +1,4 @@
-package sum
+package xsum
 
 import (
 	"os"
@@ -10,9 +10,9 @@ func getSysProps(fi os.FileInfo) *SysProps {
 		var out SysProps
 		out.UID = stat.Uid
 		out.GID = stat.Gid
-		out.Ctime = stat.Ctim
-		out.Mtime = stat.Mtim
-		out.Device = stat.Rdev
+		out.Ctime = stat.Ctimespec
+		out.Mtime = stat.Mtimespec
+		out.Device = uint64(stat.Rdev)
 		return &out
 	}
 	return nil

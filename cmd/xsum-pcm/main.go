@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"io"
 	"log"
@@ -9,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/sclevine/xsum/cli"
 )
 
 func main() {
@@ -18,7 +19,23 @@ func main() {
 	}
 
 	switch os.Getenv("XSUM_PLUGIN_TYPE") {
-	case "data":
+	case "metadata", "tree":
+		hash, err := cli.ParseHash(alg)
+		if err != nil {
+			log.Fatalf("Error: %s", err)
+		}
+		r, err := input()
+		if err != nil {
+			log.Fatalf("Error: %s", err)
+		}
+		defer r.Close()
+		out, err := hash.Data(r)
+		if err != nil {
+			r.Close()
+			log.Fatalf("Error: %s", err)
+		}
+		fmt.Printf("%x", out)
+	default: // "data"
 		if len(os.Args) < 2 {
 			log.Fatal("Error: xsum PCM plugin does not support standard input")
 		} else if len(os.Args) > 2 {
@@ -29,18 +46,6 @@ func main() {
 			log.Fatalf("Error: %s", err)
 		}
 		fmt.Print(out)
-	case "metadata", "tree":
-		r, err := input()
-		if err != nil {
-			log.Fatalf("Error: %s", err)
-		}
-		defer r.Close()
-		hash := sha256.New() // FIXME: use parseHash with alg
-		if _, err := io.Copy(hash, r); err != nil {
-			r.Close()
-			log.Fatalf("Error: %s", err)
-		}
-		fmt.Printf("%x", hash.Sum(nil))
 	}
 }
 

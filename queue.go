@@ -1,4 +1,4 @@
-package sum
+package xsum
 
 // nodeQueue has concurrency-safe properties.
 // Neither enqueue nor dequeue are individually reentrant.

@@ -1,4 +1,4 @@
-package sum
+package xsum
 
 import (
 	"encoding/binary"

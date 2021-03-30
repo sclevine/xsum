@@ -1,158 +1,134 @@
-package main
+package xsum
 
 import (
-	"crypto/md5"
-	"crypto/sha1"
-	"crypto/sha256"
-	"crypto/sha512"
+	"bytes"
+	"encoding/hex"
 	"fmt"
 	"hash"
-	"hash/adler32"
-	"hash/crc32"
-	"hash/crc64"
-	"hash/fnv"
+	"io"
+	"os"
 	"os/exec"
-	"strings"
-
-	"golang.org/x/crypto/blake2b"
-	"golang.org/x/crypto/blake2s"
-	"golang.org/x/crypto/md4"
-	"golang.org/x/crypto/ripemd160"
-	"golang.org/x/crypto/sha3"
-
-	"github.com/sclevine/xsum/sum"
 )
 
-// note: algorithm names may not contain :
-func parseHash(alg string) (sum.Hash, error) {
-	// order:
-	// - least info to most info
-	// - shorter abbreviation before longer
-	// - no dash before dash
+type Hash interface {
+	String() string
+	Metadata(b []byte) ([]byte, error)
+	Data(r io.Reader) ([]byte, error)
+	File(path string) ([]byte, error)
+	Tree(bs [][]byte) ([]byte, error)
+}
 
-	switch toSingle(alg, "-", "_", ".", "/") {
+func NewHashAlg(name string, fn func() hash.Hash) Hash {
+	return &hashAlg{
+		name: name,
+		fn:   fn,
+	}
+}
 
-	// Cryptographic hashes
+func NewHashPlugin(name, path string) Hash {
+	return &hashPlugin{
+		name: name,
+		path: path,
+	}
+}
 
-	case "md4":
-		return sum.NewHashAlg("md4", md4.New), nil
-	case "md5":
-		return sum.NewHashAlg("md5", md5.New), nil
+type hashAlg struct {
+	name string
+	fn   func() hash.Hash
+}
 
-	case "sha1":
-		return sum.NewHashAlg("sha1", sha1.New), nil
-	case "sha256", "sha2256", "sha2-256":
-		return sum.NewHashAlg("sha256", sha256.New), nil
-	case "sha224", "sha2224", "sha2-224":
-		return sum.NewHashAlg("sha224", sha256.New224), nil
-	case "sha512", "sha2512", "sha2-512":
-		return sum.NewHashAlg("sha512", sha512.New), nil
-	case "sha384", "sha2384", "sha2-384":
-		return sum.NewHashAlg("sha384", sha512.New384), nil
-	case "sha512224", "sha512-224", "sha2512224", "sha2-512224", "sha2-512-224":
-		return sum.NewHashAlg("sha512-224", sha512.New512_224), nil
-	case "sha512256", "sha512-256", "sha2512256", "sha2-512256", "sha2-512-256":
-		return sum.NewHashAlg("sha512-256", sha512.New512_256), nil
-	case "sha3224", "sha3-224":
-		return sum.NewHashAlg("sha3-224", sha3.New224), nil
-	case "sha3256", "sha3-256":
-		return sum.NewHashAlg("sha3-256", sha3.New256), nil
-	case "sha3384", "sha3-384":
-		return sum.NewHashAlg("sha3-384", sha3.New384), nil
-	case "sha3512", "sha3-512":
-		return sum.NewHashAlg("sha3-512", sha3.New512), nil
+func (h *hashAlg) String() string {
+	return h.name
+}
 
-	case "b2s256", "b2s-256", "blake2s256", "blake2s-256":
-		return sum.NewHashAlg("blake2s256", mustHash(blake2s.New256)), nil
-	case "b2b256", "b2b-256", "blake2b256", "blake2b-256":
-		return sum.NewHashAlg("blake2b256", mustHash(blake2b.New256)), nil
-	case "b2b384", "b2b-384", "blake2b384", "blake2b-384":
-		return sum.NewHashAlg("blake2b384", mustHash(blake2b.New384)), nil
-	case "b2b512", "b2b-512", "blake2b512", "blake2b-512":
-		return sum.NewHashAlg("blake2b384", mustHash(blake2b.New512)), nil
+func (h *hashAlg) Metadata(b []byte) ([]byte, error) {
+	hf := h.fn()
+	if _, err := hf.Write(b); err != nil {
+		return nil, err
+	}
+	return hf.Sum(nil), nil
+}
 
-	case "rmd160", "rmd-160", "ripemd160", "ripemd-160":
-		return sum.NewHashAlg("rmd160", ripemd160.New), nil
+func (h *hashAlg) Data(r io.Reader) ([]byte, error) {
+	hf := h.fn()
+	if _, err := io.Copy(hf, r); err != nil {
+		return nil, err
+	}
+	return hf.Sum(nil), nil
+}
 
-	// Non-cryptographic hashes
+func (h *hashAlg) File(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	hf := h.fn()
+	if _, err := io.Copy(hf, f); err != nil {
+		return nil, err
+	}
+	return hf.Sum(nil), nil
+}
 
-	case "crc32", "crc32ieee", "crc32-ieee":
-		return sum.NewHashAlg("crc32", hashTab32(crc32.New, crc32.IEEETable)), nil
-	case "crc32c", "crc32-c", "crc32castagnoli", "crc32-castagnoli":
-		return sum.NewHashAlg("crc32c", hashTab32(crc32.New, crc32.MakeTable(crc32.Castagnoli))), nil
-	case "crc32k", "crc32-k", "crc32koopman", "crc32-koopman":
-		return sum.NewHashAlg("crc32k", hashTab32(crc32.New, crc32.MakeTable(crc32.Koopman))), nil
-	case "crc64iso", "crc64-iso":
-		return sum.NewHashAlg("crc64iso", hashTab64(crc64.New, crc64.MakeTable(crc64.ISO))), nil
-	case "crc64ecma", "crc64-ecma":
-		return sum.NewHashAlg("crc64ecma", hashTab64(crc64.New, crc64.MakeTable(crc64.ECMA))), nil
-
-	case "adler32":
-		return sum.NewHashAlg("adler32", hash32(adler32.New)), nil
-
-	case "fnv32":
-		return sum.NewHashAlg("fnv32", hash32(fnv.New32)), nil
-	case "fnv32a":
-		return sum.NewHashAlg("fnv32a", hash32(fnv.New32a)), nil
-	case "fnv64":
-		return sum.NewHashAlg("fnv64", hash64(fnv.New64)), nil
-	case "fnv64a":
-		return sum.NewHashAlg("fnv64a", hash64(fnv.New64a)), nil
-	case "fnv128":
-		return sum.NewHashAlg("fnv128", fnv.New128), nil
-	case "fnv128a":
-		return sum.NewHashAlg("fnv128a", fnv.New128a), nil
-
-	default:
-		// xsum plugin
-		p, err := exec.LookPath("xsum-" + alg)
-		if err != nil {
-			return nil, fmt.Errorf("unknown algorithm `%s'", alg)
+func (h *hashAlg) Tree(bs [][]byte) ([]byte, error) {
+	hf := h.fn()
+	for _, b := range bs {
+		if _, err := hf.Write(b); err != nil {
+			return nil, err
 		}
-		return sum.NewHashPlugin(alg, p), nil
 	}
+	return hf.Sum(nil), nil
 }
 
-func mustHash(hkf func([]byte) (hash.Hash, error)) func() hash.Hash {
-	if _, err := hkf(nil); err != nil {
-		panic(err)
-	}
-	return func() hash.Hash {
-		h, err := hkf(nil)
-		if err != nil {
-			panic(err)
-		}
-		return h
-	}
+type hashPlugin struct {
+	name, path string
 }
 
-func hash32(hf func() hash.Hash32) func() hash.Hash {
-	return func() hash.Hash {
-		return hf()
-	}
+func (h *hashPlugin) String() string {
+	return h.name
 }
 
-func hash64(hf func() hash.Hash64) func() hash.Hash {
-	return func() hash.Hash {
-		return hf()
-	}
+func (h *hashPlugin) Metadata(b []byte) ([]byte, error) {
+	return h.readCmd(bytes.NewReader(b), "metadata")
 }
 
-func hashTab32(hf func(*crc32.Table) hash.Hash32, tab *crc32.Table) func() hash.Hash {
-	return func() hash.Hash {
-		return hf(tab)
-	}
+func (h *hashPlugin) Data(r io.Reader) ([]byte, error) {
+	return h.readCmd(r, "data")
 }
 
-func hashTab64(hf func(*crc64.Table) hash.Hash64, tab *crc64.Table) func() hash.Hash {
-	return func() hash.Hash {
-		return hf(tab)
-	}
+func (h *hashPlugin) File(path string) ([]byte, error) {
+	return h.argCmd(path, "data")
 }
 
-func toSingle(s, to string, from ...string) string {
-	for _, f := range from {
-		s = strings.ReplaceAll(s, f, to)
+func (h *hashPlugin) Tree(bs [][]byte) ([]byte, error) {
+	var rs []io.Reader
+	for _, b := range bs {
+		rs = append(rs, bytes.NewReader(b))
 	}
-	return s
+	return h.readCmd(io.MultiReader(rs...), "tree")
+}
+
+func (h *hashPlugin) readCmd(r io.Reader, ptype string) ([]byte, error) {
+	cmd := exec.Command(h.path)
+	cmd.Env = append(os.Environ(), "XSUM_PLUGIN_TYPE="+ptype)
+	cmd.Stdin = r
+	sum, err := cmd.Output()
+	if eErr, ok := err.(*exec.ExitError); ok {
+		return nil, fmt.Errorf("plugin error:\n\t%s", string(eErr.Stderr))
+	} else if err != nil {
+		return nil, err
+	}
+	return hex.DecodeString(string(sum))
+}
+
+func (h *hashPlugin) argCmd(path, ptype string) ([]byte, error) {
+	cmd := exec.Command(h.path, path)
+	cmd.Env = append(os.Environ(), "XSUM_PLUGIN_TYPE="+ptype)
+	sum, err := cmd.Output()
+	if eErr, ok := err.(*exec.ExitError); ok {
+		return nil, fmt.Errorf("plugin error:\n\t%s", string(eErr.Stderr))
+	} else if err != nil {
+		return nil, err
+	}
+	return hex.DecodeString(string(sum))
 }
