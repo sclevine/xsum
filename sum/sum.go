@@ -110,7 +110,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 	sOnce := doOnce(true)
 	defer sOnce.Do(sched)
 
-	fi, err := file.Stat()
+	fi, err := file.stat()
 	if os.IsNotExist(err) {
 		return &Node{File: file, Err: pathErrSimple(file.Path, err)}
 	}
@@ -206,7 +206,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 			file.Mask.Attr &= ^AttrNoData
 			sum, err = file.Hash.Metadata([]byte(link))
 			if err != nil {
-				return pathErrNode("hash", file, subdir, err)
+				return pathErrNode("hash link", file, subdir, err)
 			}
 		}
 		if inclusive && !subdir {
@@ -231,12 +231,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 			}
 		} else {
 			file.Mask.Attr &= ^AttrNoData
-			f, err := file.Open()
-			if err != nil {
-				return pathErrNode("open", file, subdir, err)
-			}
-			defer f.Close()
-			sum, err = file.Hash.Data(f)
+			sum, err = file.hash()
 			if err != nil {
 				return pathErrNode("hash", file, subdir, err)
 			}

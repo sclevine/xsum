@@ -15,14 +15,14 @@ type File struct {
 	Stdin bool
 }
 
-func (f *File) Open() (io.ReadCloser, error) {
+func (f *File) hash() ([]byte, error) {
 	if f.Stdin {
-		return io.NopCloser(os.Stdin), nil
+		return f.Hash.Data(io.NopCloser(os.Stdin))
 	}
-	return os.Open(f.Path)
+	return f.Hash.File(f.Path)
 }
 
-func (f *File) Stat() (os.FileInfo, error) {
+func (f *File) stat() (os.FileInfo, error) {
 	if f.Stdin {
 		return os.Stdin.Stat()
 	}
