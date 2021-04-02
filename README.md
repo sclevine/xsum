@@ -15,7 +15,3 @@ However, xsum is different from existing tools because:
 - xsum only uses hashing algorithms from Go's standard library and official golang.org/x/crypto packages.
 - (note about hash appropriateness)
 - (note about not using shasum CLI when annotated due to file standins for dir/sym/etc.)
-
-## FAQ
-
-Checksum of a directory? That's a meaningless concept!

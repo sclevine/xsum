@@ -47,6 +47,24 @@ func (s *Sum) Find(files []File) ([]*Node, error) {
 	return nodes, nil
 }
 
+func (s *Sum) EachList(files []File, f func(*Node) error) error {
+	ch := make(chan File)
+	ctx, done := context.WithCancel(context.Background())
+	defer done()
+	go func() {
+		for _, f := range files {
+			select {
+			case ch <- f:
+			case <-ctx.Done():
+				close(ch) // stops Each from processing after it returns, eventually unnecessary?
+				return
+			}
+		}
+		close(ch)
+	}()
+	return s.Each(ch, f)
+}
+
 func (s *Sum) Each(files <-chan File, f func(*Node) error) error {
 	queue := newNodeQueue()
 	go func() {
@@ -74,24 +92,6 @@ func (s *Sum) Each(files <-chan File, f func(*Node) error) error {
 		}
 	}
 	return nil
-}
-
-func (s *Sum) EachList(files []File, f func(*Node) error) error {
-	ch := make(chan File)
-	ctx, done := context.WithCancel(context.Background())
-	defer done()
-	go func() {
-		for _, f := range files {
-			select {
-			case ch <- f:
-			case <-ctx.Done():
-				close(ch) // stops Each from processing after it returns, eventually unnecessary?
-				return
-			}
-		}
-		close(ch)
-	}()
-	return s.Each(ch, f)
 }
 
 func (s *Sum) acquire() {

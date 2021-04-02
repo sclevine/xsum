@@ -59,6 +59,9 @@ L:
 }
 
 func NewAttrHex(s string) (Attr, error) {
+	if len(s)%2 != 0 {
+		return 0, errors.New("invalid hex attribute length")
+	}
 	b, err := hex.DecodeString(s)
 	if err != nil {
 		return 0, fmt.Errorf("invalid hex attribute `%s'", s)
@@ -66,6 +69,10 @@ func NewAttrHex(s string) (Attr, error) {
 	// ignore attrs beyond 2 bytes
 	if len(b) > 2 {
 		b = b[:2]
+	} else if len(b) == 1 {
+		b = []byte{b[0], 0}
+	} else if len(b) == 0 {
+		b = []byte{0, 0}
 	}
 	return Attr(binary.LittleEndian.Uint16(b)), nil
 }
@@ -100,7 +107,10 @@ func NewModeString(s string) (Mode, error) {
 }
 
 func NewModeHex(s string) (Mode, error) {
-	b, err := hex.DecodeString(s)
+	if len(s) != 3 {
+		return 0, errors.New("invalid hex mode length")
+	}
+	b, err := hex.DecodeString("0" + s)
 	if err != nil || len(b) != 2 {
 		return 0, fmt.Errorf("invalid hex mode `%s'", s)
 	}
@@ -112,7 +122,9 @@ func (m Mode) String() string {
 }
 
 func (m Mode) Hex() string {
-	return fmt.Sprintf("%03x", m)[:3]
+	b := make([]byte, 2)
+	binary.BigEndian.PutUint16(b, uint16(m))
+	return hex.EncodeToString(b)[1:]
 }
 
 type Mask struct {
