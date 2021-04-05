@@ -15,7 +15,7 @@ type File struct {
 	Stdin bool
 }
 
-func (f *File) hash() ([]byte, error) {
+func (f *File) sum() ([]byte, error) {
 	if f.Stdin {
 		return f.Hash.Data(io.NopCloser(os.Stdin))
 	}
@@ -39,19 +39,19 @@ type Node struct {
 
 func (n *Node) String() string {
 	if n.Mode&os.ModeDir != 0 || n.Mask.Attr&AttrInclusive != 0 {
-		return n.Hash.String() + ":" + n.SumHex() + ":" + n.Mask.String()
+		return n.Hash.String() + ":" + n.SumString() + ":" + n.Mask.String()
 	}
-	return n.Hash.String() + ":" + n.SumHex()
+	return n.Hash.String() + ":" + n.SumString()
 }
 
 func (n *Node) Hex() string {
 	if n.Mode&os.ModeDir != 0 || n.Mask.Attr&AttrInclusive != 0 {
-		return n.Hash.String() + ":" + n.SumHex() + ":" + n.Mask.Hex()
+		return n.Hash.String() + ":" + n.SumString() + ":" + n.Mask.Hex()
 	}
-	return n.Hash.String() + ":" + n.SumHex()
+	return n.Hash.String() + ":" + n.SumString()
 }
 
-func (n *Node) SumHex() string {
+func (n *Node) SumString() string {
 	return hex.EncodeToString(n.Sum)
 }
 
@@ -97,7 +97,7 @@ func (n *Node) hashFileSig() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return n.Hash.Metadata(sig)
+	return n.Hash.Tree([][]byte{sig})
 }
 
 const (

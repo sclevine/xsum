@@ -123,6 +123,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 	follow := file.Mask.Attr&AttrFollow != 0 || (!inclusive && !subdir)
 	noData := file.Mask.Attr&AttrNoData != 0 && (inclusive || subdir)
 
+	var sum []byte
 	switch {
 	case fi.IsDir():
 		if s.SkipDirs {
@@ -164,19 +165,10 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		sort.Slice(blocks, func(i, j int) bool {
 			return bytes.Compare(blocks[i], blocks[j]) < 0
 		})
-		sum, err := file.Hash.Tree(blocks)
+		sum, err = file.Hash.Tree(blocks)
 		if err != nil {
 			return pathErrNode("hash", file, subdir, err)
 		}
-		if inclusive && !subdir {
-			node := &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
-			node.Sum, err = node.hashFileSig()
-			if err != nil {
-				return pathErrNode("hash metadata", file, subdir, err)
-			}
-			return node
-		}
-		return &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
 
 	case fi.Mode()&os.ModeSymlink != 0:
 		if !follow {
@@ -190,12 +182,13 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		if follow {
 			rOnce.Do(s.release)
 			sOnce.Do(nil)
-			n := s.walkFile(File{Path: link, Mask: file.Mask}, subdir, sched)
-			n.Path = file.Path
+			path := file.Path
+			file.Path = link
+			n := s.walkFile(file, subdir, sched)
+			n.Path = path
 			return n
 		}
 		file.Mask.Attr &= ^AttrNoName
-		var sum []byte
 		if noData {
 			file.Mask.Attr |= AttrNoData
 			sum, err = file.Hash.Metadata(nil)
@@ -209,20 +202,10 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 				return pathErrNode("hash link", file, subdir, err)
 			}
 		}
-		if inclusive && !subdir {
-			node := &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
-			node.Sum, err = node.hashFileSig()
-			if err != nil {
-				return pathErrNode("hash metadata", file, subdir, err)
-			}
-			return node
-		}
-		return &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
 
 	default:
 		sOnce.Do(sched)
 		file.Mask.Attr &= ^AttrNoName
-		var sum []byte
 		if noData || (!fi.Mode().IsRegular() && (inclusive || subdir)) {
 			file.Mask.Attr |= AttrNoData
 			sum, err = file.Hash.Data(bytes.NewReader(nil))
@@ -231,21 +214,26 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 			}
 		} else {
 			file.Mask.Attr &= ^AttrNoData
-			sum, err = file.hash()
+			sum, err = file.sum()
 			if err != nil {
 				return pathErrNode("hash", file, subdir, err)
 			}
 		}
-		if inclusive && !subdir {
-			node := &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
-			node.Sum, err = node.hashFileSig()
-			if err != nil {
-				return pathErrNode("hash metadata", file, subdir, err)
-			}
-			return node
-		}
-		return &Node{File: file, Sum: sum, Mode: fi.Mode(), Sys: getSysProps(fi)}
 	}
+
+	n := &Node{
+		File: file,
+		Sum:  sum,
+		Mode: fi.Mode(),
+		Sys:  getSysProps(fi),
+	}
+	if inclusive && !subdir {
+		n.Sum, err = n.hashFileSig()
+		if err != nil {
+			return pathErrNode("hash metadata", file, subdir, err)
+		}
+	}
+	return n
 }
 
 func (s *Sum) walkDir(file File, names []string) <-chan *Node {

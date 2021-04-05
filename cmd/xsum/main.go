@@ -158,7 +158,7 @@ func output(paths []string, mask xsum.Mask, hash xsum.Hash, basic, opaque bool) 
 func checksum(n *xsum.Node, basic, opaque bool) string {
 	switch {
 	case basic:
-		return n.SumHex() + "  " + filepath.ToSlash(n.Path)
+		return n.SumString() + "  " + filepath.ToSlash(n.Path)
 	case opaque:
 		return n.Hex() + "  " + filepath.ToSlash(n.Path)
 	default:
