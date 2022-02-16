@@ -17,7 +17,7 @@ type File struct {
 
 func (f *File) sum() ([]byte, error) {
 	if f.Stdin {
-		return f.Hash.Reader(io.NopCloser(os.Stdin))
+		return f.Hash.Data(io.NopCloser(os.Stdin))
 	}
 	return f.Hash.File(f.Path)
 }
@@ -56,7 +56,7 @@ func (n *Node) SumString() string {
 }
 
 func (n *Node) dirSig(filename string) ([]byte, error) {
-	nameSum, err := n.Hash.Bytes([]byte(filename))
+	nameSum, err := n.Hash.Metadata([]byte(filename))
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +146,7 @@ func (n *Node) hashSysattr() ([]byte, error) {
 
 	// out[52:68] - reserve for btime?
 
-	return n.Hash.Bytes(out[:])
+	return n.Hash.Metadata(out[:])
 }
 
 func (n *Node) hashXattr() ([]byte, error) {
@@ -155,7 +155,7 @@ func (n *Node) hashXattr() ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		return n.Hash.Bytes(xattr)
+		return n.Hash.Metadata(xattr)
 	}
 	return nil, nil
 }

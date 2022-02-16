@@ -12,8 +12,8 @@ import (
 
 type Hash interface {
 	String() string
-	Bytes(b []byte) ([]byte, error)
-	Reader(r io.Reader) ([]byte, error)
+	Metadata(b []byte) ([]byte, error)
+	Data(r io.Reader) ([]byte, error)
 	File(path string) ([]byte, error)
 	Tree(bs [][]byte) ([]byte, error)
 }
@@ -41,7 +41,7 @@ func (h *hashAlg) String() string {
 	return h.name
 }
 
-func (h *hashAlg) Bytes(b []byte) ([]byte, error) {
+func (h *hashAlg) Metadata(b []byte) ([]byte, error) {
 	hf := h.fn()
 	if _, err := hf.Write(b); err != nil {
 		return nil, err
@@ -49,7 +49,7 @@ func (h *hashAlg) Bytes(b []byte) ([]byte, error) {
 	return hf.Sum(nil), nil
 }
 
-func (h *hashAlg) Reader(r io.Reader) ([]byte, error) {
+func (h *hashAlg) Data(r io.Reader) ([]byte, error) {
 	hf := h.fn()
 	if _, err := io.Copy(hf, r); err != nil {
 		return nil, err
@@ -88,11 +88,11 @@ func (h *hashPlugin) String() string {
 	return h.name
 }
 
-func (h *hashPlugin) Bytes(b []byte) ([]byte, error) {
+func (h *hashPlugin) Metadata(b []byte) ([]byte, error) {
 	return h.readCmd(bytes.NewReader(b), "metadata")
 }
 
-func (h *hashPlugin) Reader(r io.Reader) ([]byte, error) {
+func (h *hashPlugin) Data(r io.Reader) ([]byte, error) {
 	return h.readCmd(r, "data")
 }
 

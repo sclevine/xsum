@@ -29,7 +29,7 @@ func main() {
 			log.Fatalf("Error: %s", err)
 		}
 		defer r.Close()
-		out, err := hash.Reader(r)
+		out, err := hash.Data(r)
 		if err != nil {
 			r.Close()
 			log.Fatalf("Error: %s", err)
@@ -37,7 +37,7 @@ func main() {
 		fmt.Printf("%x", out)
 	default: // "data"
 		if len(os.Args) < 2 {
-			log.Fatal("Error: xsum PCM plugin does not support standard input")
+			log.Fatal("Error: xsum PCM plugin does not support audio input via stdin")
 		} else if len(os.Args) > 2 {
 			log.Fatalf("Error: extra arguments: %s", strings.Join(os.Args[2:], ", "))
 		}

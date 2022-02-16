@@ -192,13 +192,13 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		file.Mask.Attr &= ^AttrNoName
 		if noData {
 			file.Mask.Attr |= AttrNoData
-			sum, err = file.Hash.Bytes(nil)
+			sum, err = file.Hash.Metadata(nil)
 			if err != nil {
 				return pathErrNode("hash", file, subdir, err)
 			}
 		} else {
 			file.Mask.Attr &= ^AttrNoData
-			sum, err = file.Hash.Bytes([]byte(link))
+			sum, err = file.Hash.Metadata([]byte(link))
 			if err != nil {
 				return pathErrNode("hash link", file, subdir, err)
 			}
@@ -209,7 +209,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		file.Mask.Attr &= ^AttrNoName
 		if noData || (!fi.Mode().IsRegular() && (inclusive || subdir)) {
 			file.Mask.Attr |= AttrNoData
-			sum, err = file.Hash.Reader(bytes.NewReader(nil))
+			sum, err = file.Hash.Data(bytes.NewReader(nil))
 			if err != nil {
 				return pathErrNode("hash", file, subdir, err)
 			}
