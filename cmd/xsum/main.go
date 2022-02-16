@@ -25,7 +25,7 @@ type Options struct {
 	} `group:"General Options"`
 
 	Mask struct {
-		Mask       string `short:"m" long:"mask" description:"Apply mask as [777]7[+ugx...]:\n+u\tInclude UID\n+g\tInclude GID\n+x\tInclude extended attrs\n+s\tInclude special file modes\n+t\tInclude modified time\n+c\tInclude created time\n+i\tInclude top-level metadata\n+n\tExclude file names\n+e\tExclude data\n+l\tAlways follow symlinks"`
+		Mask       string `short:"m" long:"mask" description:"Apply attribute mask as [777]7[+ugx...]:\n+u\tInclude UID\n+g\tInclude GID\n+x\tInclude extended attrs\n+s\tInclude special file modes\n+t\tInclude modified time\n+c\tInclude created time\n+i\tInclude top-level metadata\n+n\tExclude file names\n+e\tExclude data\n+l\tAlways follow symlinks"`
 		Directory  bool   `short:"d" long:"dirs" description:"Directory mode (implies: -m 0000)"`
 		Portable   bool   `short:"p" long:"portable" description:"Portable mode, exclude names (implies: -m 0000+p)"`
 		Git        bool   `short:"g" long:"git" description:"Git mode (implies: -m 0100)"`
@@ -34,7 +34,7 @@ type Options struct {
 		Everything bool   `short:"e" long:"everything" description:"Everything mode (implies: -m 7777+ugxsct)"`
 		Inclusive  bool   `short:"i" long:"inclusive" description:"Include top-level metadata (enables mask, adds +i)"`
 		Follow     bool   `short:"l" long:"follow" description:"Follow symlinks (enables mask, adds +l)"`
-		Opaque     bool   `short:"o" long:"opaque" description:"Encode mask to opaque, fixed-length hex (enables mask)"`
+		Opaque     bool   `short:"o" long:"opaque" description:"Encode attribute mask to opaque, fixed-length hex (enables mask)"`
 	} `group:"Mask Options"`
 
 	Args struct {
@@ -100,7 +100,7 @@ func main() {
 		log.Fatalf("Invalid algorithm: %s", err)
 	}
 	if opts.General.Check {
-		check(opts.Args.Paths, alg, level)
+		validateChecksums(opts.Args.Paths, alg, level)
 	} else {
 		basic := false
 		var mask xsum.Mask
@@ -111,17 +111,17 @@ func main() {
 				log.Fatalf("Invalid mask: %s", err)
 			}
 		case opts.Mask.Portable:
-			mask = xsum.NewMask(0000, xsum.AttrNoName)
+			mask = xsum.NewMask(00000, xsum.AttrNoName)
 		case opts.Mask.Git:
-			mask = xsum.NewMask(0100, xsum.AttrEmpty)
+			mask = xsum.NewMask(00100, xsum.AttrEmpty)
 		case opts.Mask.Full:
-			mask = xsum.NewMask(7777, xsum.AttrUID|xsum.AttrGID)
+			mask = xsum.NewMask(07777, xsum.AttrUID|xsum.AttrGID)
 		case opts.Mask.Extended:
-			mask = xsum.NewMask(7777, xsum.AttrUID|xsum.AttrGID|xsum.AttrX|xsum.AttrSpecial)
+			mask = xsum.NewMask(07777, xsum.AttrUID|xsum.AttrGID|xsum.AttrX|xsum.AttrSpecial)
 		case opts.Mask.Everything:
-			mask = xsum.NewMask(7777, xsum.AttrUID|xsum.AttrGID|xsum.AttrX|xsum.AttrSpecial|xsum.AttrCtime|xsum.AttrMtime)
+			mask = xsum.NewMask(07777, xsum.AttrUID|xsum.AttrGID|xsum.AttrX|xsum.AttrSpecial|xsum.AttrCtime|xsum.AttrMtime)
 		case opts.Mask.Directory, opts.Mask.Inclusive, opts.Mask.Follow, opts.Mask.Opaque: // inclusive+follow+opaque must be last on this list
-			mask = xsum.NewMask(0000, xsum.AttrEmpty)
+			mask = xsum.NewMask(00000, xsum.AttrEmpty)
 		default:
 			basic = true
 		}
@@ -135,27 +135,27 @@ func main() {
 			if opts.General.Write == "default" {
 				opts.General.Write = opts.General.Algorithm
 			}
-			write(opts.Args.Paths, mask, alg, basic, opts.Mask.Opaque, opts.General.Write)
+			writeChecksums(opts.Args.Paths, mask, alg, basic, opts.Mask.Opaque, opts.General.Write)
 		} else {
-			output(opts.Args.Paths, mask, alg, basic, opts.Mask.Opaque)
+			outputChecksums(opts.Args.Paths, mask, alg, basic, opts.Mask.Opaque)
 		}
 	}
 }
 
-func output(paths []string, mask xsum.Mask, hash xsum.Hash, basic, opaque bool) {
-	if err := xsum.New(basic).EachList(toFiles(paths, mask, hash), func(n *xsum.Node) error {
+func outputChecksums(paths []string, mask xsum.Mask, hash xsum.Hash, basic, opaque bool) {
+	if err := xsum.New(basic).EachList(convertToFiles(paths, mask, hash), func(n *xsum.Node) error {
 		if n.Err != nil {
 			log.Printf("xsum: %s", n.Err)
 			return nil
 		}
-		fmt.Println(checksum(n, basic, opaque))
+		fmt.Println(formatChecksum(n, basic, opaque))
 		return nil
 	}); err != nil {
 		log.Fatalf("xsum: %s", err)
 	}
 }
 
-func checksum(n *xsum.Node, basic, opaque bool) string {
+func formatChecksum(n *xsum.Node, basic, opaque bool) string {
 	switch {
 	case basic:
 		return n.SumString() + "  " + filepath.ToSlash(n.Path)
@@ -166,8 +166,8 @@ func checksum(n *xsum.Node, basic, opaque bool) string {
 	}
 }
 
-func write(paths []string, mask xsum.Mask, alg xsum.Hash, basic, opaque bool, ext string) {
-	if err := xsum.New(basic).EachList(toFiles(paths, mask, alg), func(n *xsum.Node) error {
+func writeChecksums(paths []string, mask xsum.Mask, alg xsum.Hash, basic, opaque bool, ext string) {
+	if err := xsum.New(basic).EachList(convertToFiles(paths, mask, alg), func(n *xsum.Node) error {
 		if n.Err != nil {
 			log.Printf("xsum: %s", n.Err)
 			return nil
@@ -189,7 +189,7 @@ func write(paths []string, mask xsum.Mask, alg xsum.Hash, basic, opaque bool, ex
 			log.Printf("xsum: %s", err)
 			return nil
 		}
-		if _, err := fmt.Fprintln(f, checksum(n, basic, opaque)); err != nil {
+		if _, err := fmt.Fprintln(f, formatChecksum(n, basic, opaque)); err != nil {
 			f.Close()
 			log.Printf("xsum: %s", err)
 			return nil
@@ -204,7 +204,7 @@ func write(paths []string, mask xsum.Mask, alg xsum.Hash, basic, opaque bool, ex
 	}
 }
 
-func check(indexes []string, alg xsum.Hash, level outputLevel) {
+func validateChecksums(indexes []string, alg xsum.Hash, level outputLevel) {
 	files := make(chan xsum.File, 1)
 	sums := make(chan string, 1)
 	go func() {
@@ -318,7 +318,7 @@ func readIndex(f *os.File, path string, alg xsum.Hash, fn func(xsum.File, string
 	}
 }
 
-func toFiles(paths []string, mask xsum.Mask, alg xsum.Hash) []xsum.File {
+func convertToFiles(paths []string, mask xsum.Mask, alg xsum.Hash) []xsum.File {
 	var out []xsum.File
 	if len(paths) == 0 {
 		out = append(out, xsum.File{

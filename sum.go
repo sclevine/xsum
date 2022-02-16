@@ -26,10 +26,10 @@ type Sum struct {
 	SkipDirs bool
 }
 
-func New(basic bool) *Sum {
+func New(skipDirs bool) *Sum {
 	return &Sum{
 		Sem:      DefaultLock,
-		SkipDirs: basic,
+		SkipDirs: skipDirs,
 	}
 }
 
@@ -179,6 +179,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		if err != nil {
 			return pathErrNode("read link", file, subdir, err)
 		}
+		// FIXME: errors include link name -- consider fallthrough in some cases?
 		if follow {
 			rOnce.Do(s.release)
 			sOnce.Do(nil)
@@ -191,13 +192,13 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		file.Mask.Attr &= ^AttrNoName
 		if noData {
 			file.Mask.Attr |= AttrNoData
-			sum, err = file.Hash.Metadata(nil)
+			sum, err = file.Hash.Bytes(nil)
 			if err != nil {
 				return pathErrNode("hash", file, subdir, err)
 			}
 		} else {
 			file.Mask.Attr &= ^AttrNoData
-			sum, err = file.Hash.Metadata([]byte(link))
+			sum, err = file.Hash.Bytes([]byte(link))
 			if err != nil {
 				return pathErrNode("hash link", file, subdir, err)
 			}
@@ -208,7 +209,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		file.Mask.Attr &= ^AttrNoName
 		if noData || (!fi.Mode().IsRegular() && (inclusive || subdir)) {
 			file.Mask.Attr |= AttrNoData
-			sum, err = file.Hash.Data(bytes.NewReader(nil))
+			sum, err = file.Hash.Reader(bytes.NewReader(nil))
 			if err != nil {
 				return pathErrNode("hash", file, subdir, err)
 			}
@@ -239,10 +240,10 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 func (s *Sum) walkDir(file File, names []string) <-chan *Node {
 	nodes := make(chan *Node, len(names))
 	var swg, nwg sync.WaitGroup
+	nwg.Add(len(names))
+	swg.Add(len(names))
 	for _, name := range names {
 		name := name
-		nwg.Add(1)
-		swg.Add(1)
 		go func() {
 			defer nwg.Done()
 			nodes <- s.walkFile(File{

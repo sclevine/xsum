@@ -29,7 +29,7 @@ func main() {
 			log.Fatalf("Error: %s", err)
 		}
 		defer r.Close()
-		out, err := hash.Data(r)
+		out, err := hash.Reader(r)
 		if err != nil {
 			r.Close()
 			log.Fatalf("Error: %s", err)
