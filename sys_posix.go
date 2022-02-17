@@ -29,3 +29,7 @@ func getXattr(path string) ([]byte, error) {
 	}
 	return out.Bytes(), nil
 }
+
+func validateMask(_ Mask) error {
+	return nil
+}

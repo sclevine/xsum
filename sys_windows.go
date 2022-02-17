@@ -1,6 +1,7 @@
 package xsum
 
 import (
+	"errors"
 	"os"
 	"syscall"
 )
@@ -17,6 +18,16 @@ func getSysProps(fi os.FileInfo) *SysProps {
 
 func filetimeToTimespec(ft syscall.Filetime) syscall.Timespec {
 	return syscall.NsecToTimespec(ft.Nanoseconds())
+}
+
+func validateMask(mask Mask) error {
+	if mask.Mode&(sModeSetuid|sModeSetgid|sModeSticky|0111) != 0 {
+		return errors.New("masks >0666 unsupported on Windows")
+	}
+	if mask.Attr&(AttrUID|AttrGID|AttrX|AttrSpecial) != 0 {
+		return errors.New("masks with UID/GID/xattr/special unsupported on Windows")
+	}
+	return nil
 }
 
 func getXattr(path string) ([]byte, error) {

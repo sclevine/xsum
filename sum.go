@@ -117,6 +117,9 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 	if err != nil {
 		return pathErrNode("stat", file, subdir, err)
 	}
+	if err := validateMask(file.Mask); err != nil {
+		return pathErrNode("validate mask", file, subdir, err)
+	}
 
 	portable := file.Mask.Attr&AttrNoName != 0
 	inclusive := file.Mask.Attr&AttrInclusive != 0

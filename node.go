@@ -107,7 +107,7 @@ const (
 )
 
 func (n *Node) hashSysattr() ([]byte, error) {
-	var out [52]byte
+	var out [68]byte
 	var specialMask os.FileMode
 	if n.Mask.Mode&sModeSetuid != 0 {
 		specialMask |= os.ModeSetuid

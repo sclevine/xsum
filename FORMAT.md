@@ -119,9 +119,9 @@ File `contents` (for files with `+i`) is encoded as such:
 [sum(contents)][sum(sysattr)][sum(xattr)]
 ```
 
-`sysattr` is encoded as 52 bytes as such: // TODO: should we reserve more than 52 bytes?
+`sysattr` is encoded as 68 bytes as such:
 ```
-[mode{4}][uid{4}][gid{4}][device-id{8}][mtime{16}][ctime{16}]
+[mode{4}][uid{4}][gid{4}][device-id{8}][mtime{16}][ctime{16}][btime{16}]
 ```
 Attributes not reflected in the attribute mask are set to zero.
 
