@@ -15,10 +15,14 @@ type Attr uint16
 const (
 	AttrUID Attr = 1 << iota
 	AttrGID
-	AttrX
 	AttrSpecial
+	AttrAtime
 	AttrMtime
 	AttrCtime
+	AttrBtime
+
+	AttrX
+
 	AttrInclusive
 	AttrNoName
 	AttrNoData
@@ -33,10 +37,10 @@ var attrRep = []struct {
 }{
 	{AttrUID, 'u'},
 	{AttrGID, 'g'},
-	{AttrX, 'x'},
 	{AttrSpecial, 's'},
 	{AttrMtime, 't'},
 	{AttrCtime, 'c'},
+	{AttrX, 'x'},
 	{AttrInclusive, 'i'},
 	{AttrNoName, 'n'},
 	{AttrNoData, 'e'},

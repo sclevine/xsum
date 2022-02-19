@@ -30,6 +30,6 @@ func validateMask(mask Mask) error {
 	return nil
 }
 
-func getXattr(path string) ([]byte, error) {
+func getXattr(_ string, _ Hash) ([]byte, error) {
 	return nil, errors.New("xattr not available on Windows")
 }

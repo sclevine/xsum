@@ -25,7 +25,7 @@ type Options struct {
 	} `group:"General Options"`
 
 	Mask struct {
-		Mask       string `short:"m" long:"mask" description:"Apply attribute mask as [777]7[+ugx...]:\n+u\tInclude UID\n+g\tInclude GID\n+x\tInclude extended attrs\n+s\tInclude special file modes\n+t\tInclude modified time\n+c\tInclude created time\n+i\tInclude top-level metadata\n+n\tExclude file names\n+e\tExclude data\n+l\tAlways follow symlinks"`
+		Mask       string `short:"m" long:"mask" description:"Apply attribute mask as [777]7[+ugx...]:\n+u\tInclude UID\n+g\tInclude GID\n+s\tInclude special file modes\n+t\tInclude modified time\n+c\tInclude created time\n+x\tInclude extended attrs\n+i\tInclude top-level metadata\n+n\tExclude file names\n+e\tExclude data\n+l\tAlways follow symlinks"`
 		Directory  bool   `short:"d" long:"dirs" description:"Directory mode (implies: -m 0000)"`
 		Portable   bool   `short:"p" long:"portable" description:"Portable mode, exclude names (implies: -m 0000+p)"`
 		Git        bool   `short:"g" long:"git" description:"Git mode (implies: -m 0100)"`

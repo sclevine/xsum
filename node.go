@@ -64,15 +64,10 @@ func (n *Node) dirSig(filename string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	xattrSum, err := n.hashXattr()
-	if err != nil {
-		return nil, err
-	}
-	buf := bytes.NewBuffer(make([]byte, 0, len(n.Sum)*4))
+	buf := bytes.NewBuffer(make([]byte, 0, len(n.Sum)*3))
 	buf.Write(nameSum)
 	buf.Write(n.Sum)
 	buf.Write(permSum)
-	buf.Write(xattrSum)
 	return buf.Bytes(), nil
 }
 
@@ -81,14 +76,9 @@ func (n *Node) fileSig() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	xattrSum, err := n.hashXattr()
-	if err != nil {
-		return nil, err
-	}
-	buf := bytes.NewBuffer(make([]byte, 0, len(n.Sum)*3))
+	buf := bytes.NewBuffer(make([]byte, 0, len(n.Sum)*2))
 	buf.Write(n.Sum)
 	buf.Write(permSum)
-	buf.Write(xattrSum)
 	return buf.Bytes(), nil
 }
 
@@ -104,10 +94,21 @@ const (
 	sModeSetuid = 04000
 	sModeSetgid = 02000
 	sModeSticky = 01000
+
+	maskLen    = 8
 )
 
 func (n *Node) hashSysattr() ([]byte, error) {
-	var out [68]byte
+	if n.Sys == nil && n.Mask.Attr&(AttrUID|AttrGID|AttrSpecial|AttrMtime|AttrCtime) != 0 {
+		return nil, ErrNoStat
+	}
+
+	// [length: 4][mask: 8][mode: 4]
+	out := make([]byte, 16)
+
+	// length
+	binary.LittleEndian.PutUint32(out[:4], uint32(maskLen))
+
 	var specialMask os.FileMode
 	if n.Mask.Mode&sModeSetuid != 0 {
 		specialMask |= os.ModeSetuid
@@ -119,43 +120,79 @@ func (n *Node) hashSysattr() ([]byte, error) {
 		specialMask |= os.ModeSticky
 	}
 	permMask := os.FileMode(n.Mask.Mode) & os.ModePerm
-	mode := n.Mode & (os.ModeType | permMask | specialMask)
-	binary.LittleEndian.PutUint32(out[:4], uint32(mode))
+	modeMask := os.ModeType | permMask | specialMask
+	fixedMask := n.Mask.Attr&(AttrX-1)
+	varMask := n.Mask.Attr&AttrX
+	mode := n.Mode & modeMask
 
-	if n.Sys == nil && n.Mask.Attr&(AttrUID|AttrGID|AttrSpecial|AttrMtime|AttrCtime) != 0 {
-		return nil, ErrNoStat
-	}
+	// mask
+	binary.LittleEndian.PutUint32(out[4:8], uint32(modeMask))
+	binary.LittleEndian.PutUint16(out[8:10], uint16(fixedMask))
+	binary.LittleEndian.PutUint16(out[10:12], uint16(varMask>>7))
 
-	if n.Mask.Attr&AttrUID != 0 {
-		binary.LittleEndian.PutUint32(out[4:8], n.Sys.UID)
-	}
-	if n.Mask.Attr&AttrGID != 0 {
-		binary.LittleEndian.PutUint32(out[8:12], n.Sys.GID)
-	}
-	if n.Mask.Attr&AttrSpecial != 0 && n.Mode&(os.ModeDevice|os.ModeCharDevice) != 0 {
-		binary.LittleEndian.PutUint64(out[12:20], n.Sys.Device)
-	}
-	if n.Mask.Attr&AttrMtime != 0 {
-		binary.LittleEndian.PutUint64(out[20:28], uint64(n.Sys.Mtime.Sec))
-		binary.LittleEndian.PutUint64(out[28:36], uint64(n.Sys.Mtime.Nsec))
-	}
-	if n.Mask.Attr&AttrCtime != 0 {
-		binary.LittleEndian.PutUint64(out[36:44], uint64(n.Sys.Ctime.Sec))
-		binary.LittleEndian.PutUint64(out[44:52], uint64(n.Sys.Ctime.Nsec))
+	// mode
+	binary.LittleEndian.PutUint32(out[12:16], uint32(mode))
+
+
+	if fixedMask&AttrUID != 0 {
+		uid := make([]byte, 4)
+		binary.LittleEndian.PutUint32(uid, n.Sys.UID)
+		out = append(out, uid...)
 	}
 
-	// out[52:68] - reserve for btime?
+	if fixedMask&AttrGID != 0 {
+		gid := make([]byte, 4)
+		binary.LittleEndian.PutUint32(gid, n.Sys.GID)
+		out = append(out, gid...)
+	}
 
-	return n.Hash.Metadata(out[:])
-}
+	if fixedMask&AttrSpecial != 0 {
+		// technically not necessary to append 0s, since mode is included in checksum
+		dev := make([]byte, 8)
+		if n.Mode&(os.ModeDevice|os.ModeCharDevice) != 0 {
+			binary.LittleEndian.PutUint64(dev, n.Sys.Device)
+		}
+		out = append(out, dev...)
+	}
 
-func (n *Node) hashXattr() ([]byte, error) {
-	if n.Mask.Attr&AttrX != 0 {
-		xattr, err := getXattr(n.Path)
+	// atime eventually
+
+	if fixedMask&AttrMtime != 0 {
+		mtimeSec := make([]byte, 8)
+		binary.LittleEndian.PutUint64(mtimeSec, uint64(n.Sys.Mtime.Sec))
+		out = append(out, mtimeSec...)
+
+		mtimeNsec := make([]byte, 8)
+		binary.LittleEndian.PutUint64(mtimeNsec, uint64(n.Sys.Mtime.Nsec))
+		out = append(out, mtimeNsec...)
+	}
+
+	if fixedMask&AttrCtime != 0 {
+		ctimeSec := make([]byte, 8)
+		binary.LittleEndian.PutUint64(ctimeSec, uint64(n.Sys.Ctime.Sec))
+		out = append(out, ctimeSec...)
+
+		ctimeNsec := make([]byte, 8)
+		binary.LittleEndian.PutUint64(ctimeNsec, uint64(n.Sys.Ctime.Nsec))
+		out = append(out, ctimeNsec...)
+	}
+
+	// btime eventually
+
+	if varMask&AttrX != 0 {
+		blocks, err := getXattr(n.Path, n.Hash)
 		if err != nil {
 			return nil, err
 		}
-		return n.Hash.Metadata(xattr)
+		sum, err := n.Hash.Tree(blocks)
+		if err != nil {
+			return nil, err
+		}
+		sumLen := make([]byte, 4)
+		binary.LittleEndian.PutUint32(sumLen, uint32(len(sum)))
+		out = append(out, sumLen...)
+		out = append(out, sum...)
 	}
-	return nil, nil
+
+	return n.Hash.Metadata(out)
 }

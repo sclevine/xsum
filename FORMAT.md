@@ -72,10 +72,10 @@ For a given checksum output, the attribute options mask MAY include any of the f
 
 0. `u` = Include UID (user ID)
 1. `g` = Include GID (group ID)
-2. `x` = Include xattr (extended file system attributes)
-3. `s` = Include file content equivalents for special files (e.g., device IDs for character devices)
-4. `t` = include mtime (file modification time)
-5. `c` = Include ctime (file creation time)
+2. `s` = Include file content equivalents for special files (e.g., device IDs for character devices)
+3. `t` = include mtime (file modification time)
+4. `c` = Include ctime (file creation time)
+5. `x` = Include xattr (extended file system attributes)
 6. `i` = Apply other attributes to the name file/directory itself
 7. `n` = Exclude file names when summing directories (files are sorted by data checksum)
 8. `e` = Exclude file contents
@@ -102,21 +102,20 @@ As such, for a given checksum generated for a file,
 - Only checksums are concatenated (never raw data).
 
 Where:
-- `sum(x)` is a fixed-length checksum produced by the chosen hashing algorithm applied to named value `x`.
+- `sum(x)` is a fixed-length checksum produced by the chosen hashing algorithm applied to `x`.
 - `filename` is the name of the file (basename, without preceding path elements).
 - `contents` is the contents of the file or directory, as defined below.
-- `sysattr` contains standard file system attributes, as defined below.
-- `xattr` contains extended file system attributes, as defined below.
+- `sysattr` contains file system attributes, as defined below.
 
-Directory `contents` is encoded as a list of files, each encoded to `4*len(sum(x))` bytes as such:
+Directory `contents` is encoded as a list of files, each encoded to `3*len(sum(x))` bytes as such:
 ```
-[sum(filename)][sum(contents)][sum(sysattr)][sum(xattr)]
+[sum(filename)][sum(contents)][sum(sysattr)]
 ```
-File encoding are sorted lexicographically and appended to each other with no delimiter. 
+File encodings are sorted lexicographically and appended to each other with no delimiter. 
 
 File `contents` (for files with `+i`) is encoded as such:
 ```
-[sum(contents)][sum(sysattr)][sum(xattr)]
+[sum(contents)][sum(sysattr)]
 ```
 
 `sysattr` is encoded as 68 bytes as such:

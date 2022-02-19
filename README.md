@@ -25,6 +25,12 @@ This allows checksums to:
 
 The data format used for extended checksums is specified in [FORMAT.md](FORMAT.md) and can be considered stable.
 
+Extended checksums are portable across operating systems, as long as all requested attributes are supported.
+For greater portability, file content checksums may be separated from file metadata checksums (with `-`):
+```
+sha256:d0ed3ba499d2f79b4b4af9b5a9301918515c35fc99b0e57d88974f1ee74f7820:7777+ug:...  The Beatles
+```
+
 **NOTE:** By default, xsum only calculates checksums for **file/directory contents**, even in extended mode. 
 This means that by default, extended mode only includes attributes (e.g., permissions) for files/directories that are **inside a specified path**.
 Use `-i` to include top-level attributes. Without `-i`, `xsum` will not append an attribute mask for non-directories, for example:
