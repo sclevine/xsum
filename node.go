@@ -180,11 +180,7 @@ func (n *Node) hashSysattr() ([]byte, error) {
 	// btime eventually
 
 	if varMask&AttrX != 0 {
-		blocks, err := getXattr(n.Path, n.Hash)
-		if err != nil {
-			return nil, err
-		}
-		sum, err := n.Hash.Tree(blocks)
+		sum, err := getXattr(n.Path, n.Hash)
 		if err != nil {
 			return nil, err
 		}

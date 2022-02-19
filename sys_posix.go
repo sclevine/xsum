@@ -9,7 +9,7 @@ import (
 	"github.com/pkg/xattr"
 )
 
-func getXattr(path string, hash Hash) ([][]byte, error) {
+func getXattr(path string, hash Hash) ([]byte, error) {
 	attrs, err := xattr.LList(path)
 	if err != nil {
 		return nil, err
@@ -33,7 +33,7 @@ func getXattr(path string, hash Hash) ([][]byte, error) {
 	sort.Slice(blocks, func(i, j int) bool {
 		return bytes.Compare(blocks[i], blocks[j]) < 0
 	})
-	return blocks, nil
+	return hash.Tree(blocks)
 }
 
 func validateMask(_ Mask) error {
