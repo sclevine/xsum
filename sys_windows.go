@@ -4,20 +4,24 @@ import (
 	"errors"
 	"os"
 	"syscall"
+
+	"github.com/sclevine/xsum/encoding"
 )
 
-func getSysProps(fi os.FileInfo) *SysProps {
+
+func (f *File) sys(fi os.FileInfo) (*encoding.Sys, error) {
 	if stat, ok := fi.Sys().(*syscall.Win32FileAttributeData); ok && stat != nil {
-		var out SysProps
-		out.Ctime = filetimeToTimespec(stat.CreationTime)
-		out.Mtime = filetimeToTimespec(stat.LastWriteTime)
-		return &out
+		return &encoding.Sys{
+			Mtime: filetimeToTimespec(stat.LastWriteTime),
+			Ctime: filetimeToTimespec(stat.CreationTime),
+		}, nil
 	}
-	return nil
+	return nil, ErrNoStat
 }
 
-func filetimeToTimespec(ft syscall.Filetime) syscall.Timespec {
-	return syscall.NsecToTimespec(ft.Nanoseconds())
+func filetimeToTimespec(ft syscall.Filetime) *encoding.Timespec {
+	ts := encoding.Timespec(syscall.NsecToTimespec(ft.Nanoseconds()))
+	return &ts
 }
 
 func validateMask(mask Mask) error {
@@ -28,8 +32,4 @@ func validateMask(mask Mask) error {
 		return errors.New("masks with UID/GID/xattr/special unsupported on Windows")
 	}
 	return nil
-}
-
-func getXattr(_ string, _ Hash) ([]byte, error) {
-	return nil, errors.New("xattr not available on Windows")
 }

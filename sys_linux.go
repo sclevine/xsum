@@ -3,17 +3,27 @@ package xsum
 import (
 	"os"
 	"syscall"
+
+	"github.com/sclevine/xsum/encoding"
 )
 
-func getSysProps(fi os.FileInfo) *SysProps {
+func (f *File) sys(fi os.FileInfo) (*encoding.Sys, error) {
 	if stat, ok := fi.Sys().(*syscall.Stat_t); ok && stat != nil {
-		var out SysProps
-		out.UID = stat.Uid
-		out.GID = stat.Gid
-		out.Ctime = stat.Ctim
-		out.Mtime = stat.Mtim
-		out.Device = stat.Rdev
-		return &out
+		mtime := encoding.Timespec(stat.Mtim)
+		ctime := encoding.Timespec(stat.Ctim)
+		hashes, err := getXattr(f.Path, f.Hash)
+		if err != nil {
+			return nil, err
+		}
+		return &encoding.Sys{
+			UID:           &stat.Uid,
+			GID:           &stat.Gid,
+			Mtime:         &mtime,
+			Ctime:         &ctime,
+			Rdev:          &stat.Rdev, // should we check mode for dev type?
+			XattrHashes:   hashes,
+			XattrHashType: hashToEncoding(f.Hash.String()),
+		}, nil
 	}
-	return nil
+	return nil, ErrNoStat
 }

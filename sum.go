@@ -1,17 +1,17 @@
 package xsum
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"sync"
 
 	"golang.org/x/sync/semaphore"
+
+	"github.com/sclevine/xsum/encoding"
 )
 
 var (
@@ -94,19 +94,19 @@ func (s *Sum) Each(files <-chan File, f func(*Node) error) error {
 	return nil
 }
 
-func (s *Sum) acquire() {
+func (s *Sum) acquireCPU() {
 	s.Sem.Acquire(context.Background(), 1)
 }
 
-func (s *Sum) release() {
+func (s *Sum) releaseCPU() {
 	s.Sem.Release(1)
 }
 
 // If passed, sched is called exactly once when all remaining work has acquired locks on the CPU
 func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
-	s.acquire()
+	s.acquireCPU()
 	rOnce := doOnce(true)
-	defer rOnce.Do(s.release)
+	defer rOnce.Do(s.releaseCPU)
 	sOnce := doOnce(true)
 	defer sOnce.Do(sched)
 
@@ -117,8 +117,15 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 	if err != nil {
 		return pathErrNode("stat", file, subdir, err)
 	}
+	sys, err := file.sys(fi)
+	if err == ErrNoStat &&
+		file.Mask.Attr&(AttrUID|AttrGID|AttrSpecial|AttrMtime|AttrCtime) == 0 {
+		// sys not needed
+	} else if err != nil {
+		return pathErrNode("stat", file, subdir, err)
+	}
 	if err := validateMask(file.Mask); err != nil {
-		return pathErrNode("validate mask", file, subdir, err)
+		return pathErrNode("validate mask for file", file, subdir, err)
 	}
 
 	portable := file.Mask.Attr&AttrNoName != 0
@@ -136,7 +143,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		if err != nil {
 			return pathErrNode("read dir", file, subdir, err)
 		}
-		rOnce.Do(s.release)
+		rOnce.Do(s.releaseCPU)
 		nodes := s.walkDir(file, names)
 
 		sOnce.Do(sched)
@@ -145,7 +152,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		// However, it would also prevent some earlier entries from finishing before later entries and lead to excessive contention.
 		// Instead, we rely on preemption to schedule these operations.
 
-		blocks := make([][]byte, 0, len(names))
+		hashes := make([]encoding.NamedHash, 0, len(names))
 		for n := range nodes {
 			if n.Err != nil {
 				if subdir {
@@ -159,16 +166,20 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 				// safe because subdir nodes have generated bases
 				name = filepath.Base(n.Path)
 			}
-			b, err := n.dirSig(name)
+			b, err := n.hashFileAttr()
 			if err != nil {
-				return pathErrNode("hash metadata", file, subdir, err)
+				return pathErrNode("hash metadata for file", file, subdir, err)
 			}
-			blocks = append(blocks, b)
+			hashes = append(hashes, encoding.NamedHash{
+				Hash: b,
+				Name: []byte(name),
+			})
 		}
-		sort.Slice(blocks, func(i, j int) bool {
-			return bytes.Compare(blocks[i], blocks[j]) < 0
-		})
-		sum, err = file.Hash.Tree(blocks)
+		der, err := encoding.TreeASN1DER(hashToEncoding(file.Hash.String()), hashes)
+		if err != nil {
+			return pathErrNode("encode", file, subdir, err)
+		}
+		sum, err = file.Hash.Metadata(der)
 		if err != nil {
 			return pathErrNode("hash", file, subdir, err)
 		}
@@ -184,7 +195,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		}
 		// FIXME: errors include link name -- consider fallthrough in some cases?
 		if follow {
-			rOnce.Do(s.release)
+			rOnce.Do(s.releaseCPU)
 			sOnce.Do(nil)
 			path := file.Path
 			file.Path = link
@@ -192,13 +203,9 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 			n.Path = path
 			return n
 		}
-		file.Mask.Attr &= ^AttrNoName
+		file.Mask.Attr &= ^AttrNoName // not directory
 		if noData {
 			file.Mask.Attr |= AttrNoData
-			sum, err = file.Hash.Metadata(nil)
-			if err != nil {
-				return pathErrNode("hash", file, subdir, err)
-			}
 		} else {
 			file.Mask.Attr &= ^AttrNoData
 			sum, err = file.Hash.Metadata([]byte(link))
@@ -209,13 +216,9 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 
 	default:
 		sOnce.Do(sched)
-		file.Mask.Attr &= ^AttrNoName
+		file.Mask.Attr &= ^AttrNoName // not directory
 		if noData || (!fi.Mode().IsRegular() && (inclusive || subdir)) {
 			file.Mask.Attr |= AttrNoData
-			sum, err = file.Hash.Data(bytes.NewReader(nil))
-			if err != nil {
-				return pathErrNode("hash", file, subdir, err)
-			}
 		} else {
 			file.Mask.Attr &= ^AttrNoData
 			sum, err = file.sum()
@@ -229,12 +232,12 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		File: file,
 		Sum:  sum,
 		Mode: fi.Mode(),
-		Sys:  getSysProps(fi),
+		Sys:  sys,
 	}
 	if inclusive && !subdir {
-		n.Sum, err = n.hashFileSig()
+		n.Sum, err = n.hashFileAttr()
 		if err != nil {
-			return pathErrNode("hash metadata", file, subdir, err)
+			return pathErrNode("hash metadata for file", file, subdir, err)
 		}
 	}
 	return n
@@ -264,9 +267,9 @@ func (s *Sum) walkDir(file File, names []string) <-chan *Node {
 	return nodes
 }
 
+// sync.Once is concurrent, not needed here
 type doOnce bool
 
-// sync.Once is concurrent, not needed here
 func (rs *doOnce) Do(f func()) {
 	if *rs {
 		*rs = false

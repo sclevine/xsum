@@ -1,11 +1,11 @@
 package xsum
 
 import (
-	"bytes"
-	"encoding/binary"
 	"encoding/hex"
 	"io"
 	"os"
+
+	"github.com/sclevine/xsum/encoding"
 )
 
 type File struct {
@@ -33,7 +33,7 @@ type Node struct {
 	File
 	Sum  []byte
 	Mode os.FileMode
-	Sys  *SysProps
+	Sys  *encoding.Sys
 	Err  error
 }
 
@@ -55,59 +55,16 @@ func (n *Node) SumString() string {
 	return hex.EncodeToString(n.Sum)
 }
 
-func (n *Node) dirSig(filename string) ([]byte, error) {
-	nameSum, err := n.Hash.Metadata([]byte(filename))
-	if err != nil {
-		return nil, err
-	}
-	permSum, err := n.hashSysattr()
-	if err != nil {
-		return nil, err
-	}
-	buf := bytes.NewBuffer(make([]byte, 0, len(n.Sum)*3))
-	buf.Write(nameSum)
-	buf.Write(n.Sum)
-	buf.Write(permSum)
-	return buf.Bytes(), nil
-}
-
-func (n *Node) fileSig() ([]byte, error) {
-	permSum, err := n.hashSysattr()
-	if err != nil {
-		return nil, err
-	}
-	buf := bytes.NewBuffer(make([]byte, 0, len(n.Sum)*2))
-	buf.Write(n.Sum)
-	buf.Write(permSum)
-	return buf.Bytes(), nil
-}
-
-func (n *Node) hashFileSig() ([]byte, error) {
-	sig, err := n.fileSig()
-	if err != nil {
-		return nil, err
-	}
-	return n.Hash.Tree([][]byte{sig})
-}
-
 const (
 	sModeSetuid = 04000
 	sModeSetgid = 02000
 	sModeSticky = 01000
-
-	maskLen    = 8
 )
 
-func (n *Node) hashSysattr() ([]byte, error) {
+func (n *Node) hashFileAttr() ([]byte, error) {
 	if n.Sys == nil && n.Mask.Attr&(AttrUID|AttrGID|AttrSpecial|AttrMtime|AttrCtime) != 0 {
 		return nil, ErrNoStat
 	}
-
-	// [length: 4][mask: 8][mode: 4]
-	out := make([]byte, 16)
-
-	// length
-	binary.LittleEndian.PutUint32(out[:4], uint32(maskLen))
 
 	var specialMask os.FileMode
 	if n.Mask.Mode&sModeSetuid != 0 {
@@ -121,74 +78,37 @@ func (n *Node) hashSysattr() ([]byte, error) {
 	}
 	permMask := os.FileMode(n.Mask.Mode) & os.ModePerm
 	modeMask := os.ModeType | permMask | specialMask
-	fixedMask := n.Mask.Attr&(AttrX-1)
-	varMask := n.Mask.Attr&AttrX
-	mode := n.Mode & modeMask
 
-	// mask
-	binary.LittleEndian.PutUint32(out[4:8], uint32(modeMask))
-	binary.LittleEndian.PutUint16(out[8:10], uint16(fixedMask))
-	binary.LittleEndian.PutUint16(out[10:12], uint16(varMask>>7))
-
-	// mode
-	binary.LittleEndian.PutUint32(out[12:16], uint32(mode))
-
-
-	if fixedMask&AttrUID != 0 {
-		uid := make([]byte, 4)
-		binary.LittleEndian.PutUint32(uid, n.Sys.UID)
-		out = append(out, uid...)
+	sys := &encoding.Sys{}
+	if n.Mask.Attr&AttrUID != 0 {
+		sys.UID = n.Sys.UID
+	}
+	if n.Mask.Attr&AttrGID != 0 {
+		sys.GID = n.Sys.GID
+	}
+	if n.Mask.Attr&AttrMtime != 0 {
+		sys.Mtime = n.Sys.Mtime
+	}
+	if n.Mask.Attr&AttrCtime != 0 {
+		sys.Ctime = n.Sys.Ctime
+	}
+	if n.Mask.Attr&AttrSpecial != 0 {
+		sys.Rdev = n.Sys.Rdev
+	}
+	if n.Mask.Attr&AttrX != 0 {
+		sys.XattrHashes = n.Sys.XattrHashes
+		sys.XattrHashType = n.Sys.XattrHashType
 	}
 
-	if fixedMask&AttrGID != 0 {
-		gid := make([]byte, 4)
-		binary.LittleEndian.PutUint32(gid, n.Sys.GID)
-		out = append(out, gid...)
+	hashType := encoding.HashNone
+	if len(n.Sum) != 0 { 	// check no-data attr or not?
+		hashType = hashToEncoding(n.Hash.String())
 	}
 
-	if fixedMask&AttrSpecial != 0 {
-		// technically not necessary to append 0s, since mode is included in checksum
-		dev := make([]byte, 8)
-		if n.Mode&(os.ModeDevice|os.ModeCharDevice) != 0 {
-			binary.LittleEndian.PutUint64(dev, n.Sys.Device)
-		}
-		out = append(out, dev...)
+	asn, err := encoding.FileASN1DER(hashType, n.Sum, n.Mode, modeMask, sys)
+	if err != nil {
+		return nil, err
 	}
-
-	// atime eventually
-
-	if fixedMask&AttrMtime != 0 {
-		mtimeSec := make([]byte, 8)
-		binary.LittleEndian.PutUint64(mtimeSec, uint64(n.Sys.Mtime.Sec))
-		out = append(out, mtimeSec...)
-
-		mtimeNsec := make([]byte, 8)
-		binary.LittleEndian.PutUint64(mtimeNsec, uint64(n.Sys.Mtime.Nsec))
-		out = append(out, mtimeNsec...)
-	}
-
-	if fixedMask&AttrCtime != 0 {
-		ctimeSec := make([]byte, 8)
-		binary.LittleEndian.PutUint64(ctimeSec, uint64(n.Sys.Ctime.Sec))
-		out = append(out, ctimeSec...)
-
-		ctimeNsec := make([]byte, 8)
-		binary.LittleEndian.PutUint64(ctimeNsec, uint64(n.Sys.Ctime.Nsec))
-		out = append(out, ctimeNsec...)
-	}
-
-	// btime eventually
-
-	if varMask&AttrX != 0 {
-		sum, err := getXattr(n.Path, n.Hash)
-		if err != nil {
-			return nil, err
-		}
-		sumLen := make([]byte, 4)
-		binary.LittleEndian.PutUint32(sumLen, uint32(len(sum)))
-		out = append(out, sumLen...)
-		out = append(out, sum...)
-	}
-
-	return n.Hash.Metadata(out)
+	return n.Hash.Metadata(asn)
 }
+

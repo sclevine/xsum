@@ -19,7 +19,7 @@ func main() {
 	}
 
 	switch os.Getenv("XSUM_PLUGIN_TYPE") {
-	case "metadata", "tree":
+	case "metadata":
 		hash, err := cli.ParseHash(alg)
 		if err != nil {
 			log.Fatalf("Error: %s", err)

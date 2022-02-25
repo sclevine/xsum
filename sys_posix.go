@@ -3,37 +3,32 @@
 package xsum
 
 import (
-	"bytes"
-	"sort"
-
 	"github.com/pkg/xattr"
+
+	"github.com/sclevine/xsum/encoding"
 )
 
-func getXattr(path string, hash Hash) ([]byte, error) {
+func getXattr(path string, hash Hash) ([]encoding.NamedHash, error) {
 	attrs, err := xattr.LList(path)
 	if err != nil {
 		return nil, err
 	}
-	var blocks [][]byte
+	var hashes []encoding.NamedHash
 	for _, attr := range attrs {
 		val, err := xattr.LGet(path, attr)
 		if err != nil {
 			return nil, err
 		}
-		attrSum, err := hash.Metadata([]byte(attr))
+		valSum, err := hash.Metadata(val)
 		if err != nil {
 			return nil, err
 		}
-		valSum, err := hash.Data(bytes.NewReader(val))
-		if err != nil {
-			return nil, err
-		}
-		blocks = append(blocks, append(attrSum, valSum...))
+		hashes = append(hashes, encoding.NamedHash{
+			Hash: valSum,
+			Name: []byte(attr),
+		})
 	}
-	sort.Slice(blocks, func(i, j int) bool {
-		return bytes.Compare(blocks[i], blocks[j]) < 0
-	})
-	return hash.Tree(blocks)
+	return hashes, nil
 }
 
 func validateMask(_ Mask) error {

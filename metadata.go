@@ -10,42 +10,6 @@ import (
 	"strings"
 )
 
-type Attr uint16
-
-const (
-	AttrUID Attr = 1 << iota
-	AttrGID
-	AttrSpecial
-	AttrAtime
-	AttrMtime
-	AttrCtime
-	AttrBtime
-
-	AttrX
-
-	AttrInclusive
-	AttrNoName
-	AttrNoData
-	AttrFollow
-
-	AttrEmpty Attr = 0
-)
-
-var attrRep = []struct {
-	attr Attr
-	rep  byte
-}{
-	{AttrUID, 'u'},
-	{AttrGID, 'g'},
-	{AttrSpecial, 's'},
-	{AttrMtime, 't'},
-	{AttrCtime, 'c'},
-	{AttrX, 'x'},
-	{AttrInclusive, 'i'},
-	{AttrNoName, 'n'},
-	{AttrNoData, 'e'},
-	{AttrFollow, 'l'},
-}
 
 func NewAttrString(s string) (Attr, error) {
 	var attr Attr
@@ -81,6 +45,42 @@ func NewAttrHex(s string) (Attr, error) {
 	return Attr(binary.LittleEndian.Uint16(b)), nil
 }
 
+type Attr uint16
+
+const (
+	AttrUID Attr = 1 << iota
+	AttrGID
+	AttrAtime
+	AttrMtime
+	AttrCtime
+	AttrBtime
+	AttrSpecial
+	AttrX
+
+	AttrInclusive
+	AttrNoName
+	AttrNoData
+	AttrFollow
+
+	AttrEmpty Attr = 0
+)
+
+var attrRep = []struct {
+	attr Attr
+	rep  byte
+}{
+	{AttrUID, 'u'},
+	{AttrGID, 'g'},
+	{AttrSpecial, 's'},
+	{AttrMtime, 't'},
+	{AttrCtime, 'c'},
+	{AttrX, 'x'},
+	{AttrInclusive, 'i'},
+	{AttrNoName, 'n'},
+	{AttrNoData, 'e'},
+	{AttrFollow, 'l'},
+}
+
 func (a Attr) String() string {
 	var out strings.Builder
 	for _, p := range attrRep {
@@ -96,8 +96,6 @@ func (a Attr) Hex() string {
 	binary.LittleEndian.PutUint16(b, uint16(a))
 	return hex.EncodeToString(b)
 }
-
-type Mode uint16
 
 func NewModeString(s string) (Mode, error) {
 	if s == "" {
@@ -120,6 +118,8 @@ func NewModeHex(s string) (Mode, error) {
 	}
 	return Mode(binary.BigEndian.Uint16(b)), nil
 }
+
+type Mode uint16
 
 func (m Mode) String() string {
 	return fmt.Sprintf("%04o", m)[:4]
@@ -186,5 +186,5 @@ func (m Mask) String() string {
 }
 
 func (m Mask) Hex() string {
-	return m.Mode.Hex() + m.Attr.Hex()
+	return m.Mode.Hex() + m.Attr.Hex() // TODO: reconsider big-endian and also length
 }

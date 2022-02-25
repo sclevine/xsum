@@ -92,14 +92,13 @@ The number MUST be the sum of all options included in the mask, where the value 
 
 ## Tree Format
 
-The xsum v1 tree format makes use of [Merkle Trees](https://en.wikipedia.org/wiki/Merkle_tree) to calculate checksums of metadata-inclusive files and directories.
+The xsum v1 tree format makes use of [Merkle Trees](https://en.wikipedia.org/wiki/Merkle_tree) to calculate metadata-inclusive checksums of files and directories.
 
-The xsum v1 tree format MUST ensure that two files with different contents or attributes cannot result in the same input to the chosen hashing algorithm.
-
-As such, for a given checksum generated for a file,
-- All checksums are calculated using the same algorithm.
-- All checksums are fixed-length.
-- Only checksums are concatenated (never raw data).
+The xsum v1 tree format uses DER-encoded ASN.1 to achieve deterministic and canonical output:
+1. Two files with identical contents always provide the same content as input to the chosen hash function.
+2. Two files with identical attributes always provide the same attributes as input to the chosen hash function.
+3. Two files with different contents never provide the same content as input to the chosen hash function.
+4. Two files with different attributes never provide the same attributes as input to the chosen hash function.
 
 Where:
 - `sum(x)` is a fixed-length checksum produced by the chosen hashing algorithm applied to `x`.
