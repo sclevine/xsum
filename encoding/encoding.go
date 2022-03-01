@@ -3,8 +3,10 @@ package encoding
 import (
 	"encoding/asn1"
 	"encoding/binary"
+	"fmt"
 	"math/big"
 	"os"
+	"strings"
 )
 
 /*
@@ -187,20 +189,19 @@ func FileASN1DER(hashType HashType, hash []byte, mode, mask os.FileMode, sys *Sy
 	binary.BigEndian.PutUint32(maskBytes[:], uint32(mask))
 	binary.BigEndian.PutUint32(modeBytes[:], uint32(mode&mask))
 
-
 	file := fileASN1{
 		Hash: emptyASN1,
 		Mode: modeASN1{
 			Mask: asn1.BitString{Bytes: maskBytes[:], BitLength: 32},
 			Mode: asn1.BitString{Bytes: modeBytes[:], BitLength: 32},
 		},
-		UID: emptyASN1,
-		GID: emptyASN1,
+		UID:   emptyASN1,
+		GID:   emptyASN1,
 		Atime: emptyASN1,
 		Mtime: emptyASN1,
 		Ctime: emptyASN1,
 		Btime: emptyASN1,
-		Rdev: emptyASN1,
+		Rdev:  emptyASN1,
 		Xattr: emptyASN1,
 	}
 
@@ -249,7 +250,14 @@ func FileASN1DER(hashType HashType, hash []byte, mode, mask os.FileMode, sys *Sy
 		}
 	}
 
-	return asn1.Marshal(file)
+	der, err := asn1.Marshal(file)
+	if err != nil {
+		return nil, err
+	}
+	if debug() {
+		fmt.Printf("# File =\n# ASN1: %+v\n# DER: % x\n", file, der)
+	}
+	return der, nil
 }
 
 func TreeASN1DER(hashType HashType, hashes []NamedHash) ([]byte, error) {
@@ -259,5 +267,17 @@ func TreeASN1DER(hashType HashType, hashes []NamedHash) ([]byte, error) {
 	for _, h := range hashes {
 		t.Tree = append(t.Tree, hashEntryASN1(h))
 	}
-	return asn1.Marshal(t)
+	der, err := asn1.Marshal(t)
+	if err != nil {
+		return nil, err
+	}
+	if debug() {
+		fmt.Printf("# Tree =\n# ASN1: %+v\n# DER: % x\n", t, der)
+	}
+	return der, nil
+}
+
+func debug() bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv("XSUM_DEBUG")))
+	return v == "1" || v == "true" || v == "t" || v == "yes" || v == "on"
 }

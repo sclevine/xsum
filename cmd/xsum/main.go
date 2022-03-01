@@ -65,6 +65,39 @@ func main() {
 	if len(rest) != 0 {
 		log.Fatalf("Unparsable arguments: %s", strings.Join(rest, ", "))
 	}
+	err = Run(&opts)
+	if err, ok := err.(*InitError); ok && err != nil {
+		log.Fatal(err)
+	} else if err != nil {
+		log.Fatalf("xsum: %s", err)
+	}
+}
+
+func wrapInitError(msg string, err error) error {
+	return &InitError{Msg: msg, Err: err}
+}
+
+func newInitError(msg string) error {
+	return &InitError{Msg: msg}
+}
+
+type InitError struct {
+	Msg string
+	Err error
+}
+
+func (e *InitError) Unwrap() error {
+	return e.Err
+}
+
+func (e *InitError) Error() string {
+	if e.Err != nil {
+		return fmt.Sprintf("%s: %s", e.Msg, e.Err)
+	}
+	return e.Msg
+}
+
+func Run(opts *Options) error {
 	if multipleTrue(
 		opts.General.Check,
 		opts.Mask.Mask != "",
@@ -74,19 +107,19 @@ func main() {
 		opts.Mask.Full,
 		opts.Mask.Extended,
 		opts.Mask.Everything) {
-		log.Fatal("Only one of -c, -m, -p, -g, -f, -x, or -e permitted.")
+		return newInitError("Only one of -c, -m, -p, -g, -f, -x, or -e permitted.")
 	}
 	if opts.General.Check && opts.Mask.Inclusive {
-		log.Fatal("Only one of -c, -i permitted.")
+		return newInitError("Only one of -c, -i permitted.")
 	}
 	if opts.General.Check && opts.Mask.Follow {
-		log.Fatal("Only one of -c, -l permitted.")
+		return newInitError("Only one of -c, -l permitted.")
 	}
 	if opts.General.Check && opts.Mask.Opaque {
-		log.Fatal("Only one of -c, -o permitted.")
+		return newInitError("Only one of -c, -o permitted.")
 	}
 	if opts.General.Check && opts.General.Write != "" {
-		log.Fatal("Only one of -c, -w permitted.")
+		return newInitError("Only one of -c, -w permitted.")
 	}
 
 	level := outputNormal
@@ -97,62 +130,59 @@ func main() {
 	}
 	alg, err := cli.ParseHash(opts.General.Algorithm)
 	if err != nil {
-		log.Fatalf("Invalid algorithm: %s", err)
+		return wrapInitError("Invalid algorithm: %s", err)
 	}
 	if opts.General.Check {
-		validateChecksums(opts.Args.Paths, alg, level)
-	} else {
-		basic := false
-		var mask xsum.Mask
-		switch {
-		case opts.Mask.Mask != "":
-			mask, err = xsum.NewMaskString(opts.Mask.Mask)
-			if err != nil {
-				log.Fatalf("Invalid mask: %s", err)
-			}
-		case opts.Mask.Portable:
-			mask = xsum.NewMask(00000, xsum.AttrNoName)
-		case opts.Mask.Git:
-			mask = xsum.NewMask(00100, xsum.AttrEmpty)
-		case opts.Mask.Full:
-			mask = xsum.NewMask(07777, xsum.AttrUID|xsum.AttrGID)
-		case opts.Mask.Extended:
-			mask = xsum.NewMask(07777, xsum.AttrUID|xsum.AttrGID|xsum.AttrX|xsum.AttrSpecial)
-		case opts.Mask.Everything:
-			mask = xsum.NewMask(07777, xsum.AttrUID|xsum.AttrGID|xsum.AttrX|xsum.AttrSpecial|xsum.AttrCtime|xsum.AttrMtime)
-		case opts.Mask.Directory, opts.Mask.Inclusive, opts.Mask.Follow, opts.Mask.Opaque: // inclusive+follow+opaque must be last on this list
-			mask = xsum.NewMask(00000, xsum.AttrEmpty)
-		default:
-			basic = true
-		}
-		if opts.Mask.Inclusive {
-			mask.Attr |= xsum.AttrInclusive
-		}
-		if opts.Mask.Follow {
-			mask.Attr |= xsum.AttrFollow
-		}
-		if opts.General.Write != "" {
-			if opts.General.Write == "default" {
-				opts.General.Write = opts.General.Algorithm
-			}
-			writeChecksums(opts.Args.Paths, mask, alg, basic, opts.Mask.Opaque, opts.General.Write)
-		} else {
-			outputChecksums(opts.Args.Paths, mask, alg, basic, opts.Mask.Opaque)
-		}
+		return validateChecksums(opts.Args.Paths, alg, level)
 	}
+
+	basic := false
+	var mask xsum.Mask
+	switch {
+	case opts.Mask.Mask != "":
+		mask, err = xsum.NewMaskString(opts.Mask.Mask)
+		if err != nil {
+			return wrapInitError("Invalid mask: %s", err)
+		}
+	case opts.Mask.Portable:
+		mask = xsum.NewMask(00000, xsum.AttrNoName)
+	case opts.Mask.Git:
+		mask = xsum.NewMask(00100, xsum.AttrEmpty)
+	case opts.Mask.Full:
+		mask = xsum.NewMask(07777, xsum.AttrUID|xsum.AttrGID)
+	case opts.Mask.Extended:
+		mask = xsum.NewMask(07777, xsum.AttrUID|xsum.AttrGID|xsum.AttrX|xsum.AttrSpecial)
+	case opts.Mask.Everything:
+		mask = xsum.NewMask(07777, xsum.AttrUID|xsum.AttrGID|xsum.AttrX|xsum.AttrSpecial|xsum.AttrCtime|xsum.AttrMtime)
+	case opts.Mask.Directory, opts.Mask.Inclusive, opts.Mask.Follow, opts.Mask.Opaque: // inclusive+follow+opaque must be last on this list
+		mask = xsum.NewMask(00000, xsum.AttrEmpty)
+	default:
+		basic = true
+	}
+	if opts.Mask.Inclusive {
+		mask.Attr |= xsum.AttrInclusive
+	}
+	if opts.Mask.Follow {
+		mask.Attr |= xsum.AttrFollow
+	}
+	if opts.General.Write != "" {
+		if opts.General.Write == "default" {
+			opts.General.Write = opts.General.Algorithm
+		}
+		return writeChecksums(opts.Args.Paths, mask, alg, basic, opts.Mask.Opaque, opts.General.Write)
+	}
+	return outputChecksums(opts.Args.Paths, mask, alg, basic, opts.Mask.Opaque)
 }
 
-func outputChecksums(paths []string, mask xsum.Mask, hash xsum.Hash, basic, opaque bool) {
-	if err := xsum.New(basic).EachList(convertToFiles(paths, mask, hash), func(n *xsum.Node) error {
+func outputChecksums(paths []string, mask xsum.Mask, hash xsum.Hash, basic, opaque bool) error {
+	return xsum.New(basic).EachList(convertToFiles(paths, mask, hash), func(n *xsum.Node) error {
 		if n.Err != nil {
 			log.Printf("xsum: %s", n.Err)
 			return nil
 		}
 		fmt.Println(formatChecksum(n, basic, opaque))
 		return nil
-	}); err != nil {
-		log.Fatalf("xsum: %s", err)
-	}
+	})
 }
 
 func formatChecksum(n *xsum.Node, basic, opaque bool) string {
@@ -166,8 +196,8 @@ func formatChecksum(n *xsum.Node, basic, opaque bool) string {
 	}
 }
 
-func writeChecksums(paths []string, mask xsum.Mask, alg xsum.Hash, basic, opaque bool, ext string) {
-	if err := xsum.New(basic).EachList(convertToFiles(paths, mask, alg), func(n *xsum.Node) error {
+func writeChecksums(paths []string, mask xsum.Mask, alg xsum.Hash, basic, opaque bool, ext string) error {
+	return xsum.New(basic).EachList(convertToFiles(paths, mask, alg), func(n *xsum.Node) error {
 		if n.Err != nil {
 			log.Printf("xsum: %s", n.Err)
 			return nil
@@ -199,12 +229,10 @@ func writeChecksums(paths []string, mask xsum.Mask, alg xsum.Hash, basic, opaque
 			return nil
 		}
 		return nil
-	}); err != nil {
-		log.Fatalf("xsum: %s", err)
-	}
+	})
 }
 
-func validateChecksums(indexes []string, alg xsum.Hash, level outputLevel) {
+func validateChecksums(indexes []string, alg xsum.Hash, level outputLevel) error {
 	files := make(chan xsum.File, 1)
 	sums := make(chan string, 1)
 	go func() {
@@ -248,7 +276,7 @@ func validateChecksums(indexes []string, alg xsum.Hash, level outputLevel) {
 		}
 		return nil
 	}); err != nil {
-		log.Fatalf("xsum: %s", err)
+		return err
 	}
 	if failed > 0 {
 		plural := ""
@@ -258,8 +286,9 @@ func validateChecksums(indexes []string, alg xsum.Hash, level outputLevel) {
 		if level == outputStatus {
 			os.Exit(1)
 		}
-		log.Fatalf("xsum: WARNING: %d computed checksum%s did NOT match", failed, plural)
+		return fmt.Errorf("WARNING: %d computed checksum%s did NOT match", failed, plural)
 	}
+	return nil
 }
 
 func readIndexPath(path string, alg xsum.Hash, fn func(xsum.File, string)) {
@@ -280,6 +309,9 @@ func readIndex(f *os.File, path string, alg xsum.Hash, fn func(xsum.File, string
 	scan := bufio.NewScanner(f)
 	for scan.Scan() {
 		entry := scan.Text()
+		if s := strings.TrimSpace(entry); len(s) > 0 && s[0] == '#' {
+			continue
+		}
 		lines := strings.SplitN(entry, "  ", 2)
 		if len(lines) != 2 {
 			log.Printf("xsum: %s: invalid entry `%s'", path, entry)

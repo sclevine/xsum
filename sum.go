@@ -112,20 +112,20 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 
 	fi, err := file.stat()
 	if os.IsNotExist(err) {
-		return &Node{File: file, Err: pathErrSimple(file.Path, err)}
+		return newFileErrorNode("", file, subdir, err)
 	}
 	if err != nil {
-		return pathErrNode("stat", file, subdir, err)
+		return newFileErrorNode("stat", file, subdir, err)
 	}
 	sys, err := file.sys(fi)
 	if err == ErrNoStat &&
 		file.Mask.Attr&(AttrUID|AttrGID|AttrSpecial|AttrMtime|AttrCtime) == 0 {
 		// sys not needed
 	} else if err != nil {
-		return pathErrNode("stat", file, subdir, err)
+		return newFileErrorNode("stat", file, subdir, err)
 	}
 	if err := validateMask(file.Mask); err != nil {
-		return pathErrNode("validate mask for file", file, subdir, err)
+		return newFileErrorNode("validate mask for file", file, subdir, err)
 	}
 
 	portable := file.Mask.Attr&AttrNoName != 0
@@ -137,11 +137,11 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 	switch {
 	case fi.IsDir():
 		if s.SkipDirs {
-			return &Node{File: file, Err: pathErrSimple(file.Path, ErrDirectory)}
+			return newFileErrorNode("", file, subdir, ErrDirectory)
 		}
 		names, err := readDirUnordered(file.Path)
 		if err != nil {
-			return pathErrNode("read dir", file, subdir, err)
+			return newFileErrorNode("read dir", file, subdir, err)
 		}
 		rOnce.Do(s.releaseCPU)
 		nodes := s.walkDir(file, names)
@@ -155,11 +155,11 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		hashes := make([]encoding.NamedHash, 0, len(names))
 		for n := range nodes {
 			if n.Err != nil {
-				if subdir {
+				if subdir { // preserve bottom-level and top-level FileError only
 					// error from walkFile has adequate context
 					return &Node{File: file, Err: n.Err}
 				}
-				return &Node{File: file, Err: fmt.Errorf("%s: %w", file.Path, n.Err)}
+				return newFileErrorNode("", file, subdir, n.Err)
 			}
 			var name string
 			if !portable {
@@ -168,7 +168,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 			}
 			b, err := n.hashFileAttr()
 			if err != nil {
-				return pathErrNode("hash metadata for file", file, subdir, err)
+				return newFileErrorNode("hash metadata for file", file, subdir, err)
 			}
 			hashes = append(hashes, encoding.NamedHash{
 				Hash: b,
@@ -177,40 +177,45 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		}
 		der, err := encoding.TreeASN1DER(hashToEncoding(file.Hash.String()), hashes)
 		if err != nil {
-			return pathErrNode("encode", file, subdir, err)
+			return newFileErrorNode("encode", file, subdir, err)
 		}
 		sum, err = file.Hash.Metadata(der)
 		if err != nil {
-			return pathErrNode("hash", file, subdir, err)
+			return newFileErrorNode("hash", file, subdir, err)
 		}
 
-	case fi.Mode()&os.ModeSymlink != 0:
-		if !follow {
-			// announce schedule early if not following link
-			sOnce.Do(sched)
-		}
-		link, err := os.Readlink(file.Path)
+	case fi.Mode()&os.ModeSymlink != 0 && follow:
+		link, err := filepath.EvalSymlinks(file.Path)
 		if err != nil {
-			return pathErrNode("read link", file, subdir, err)
+			return newFileErrorNode("", file, subdir, err) // closer to, e.g., shasum w/o action
 		}
-		// FIXME: errors include link name -- consider fallthrough in some cases?
-		if follow {
-			rOnce.Do(s.releaseCPU)
-			sOnce.Do(nil)
-			path := file.Path
-			file.Path = link
-			n := s.walkFile(file, subdir, sched)
-			n.Path = path
-			return n
+
+		rOnce.Do(s.releaseCPU) // will be re-acquired at dest
+		sOnce.Do(nil) // prevent defer, will be called at dest
+
+		path := file.Path
+		file.Path = link
+		n := s.walkFile(file, subdir, sched)
+		n.Path = path
+		fErr := &FileError{}
+		if errors.As(err, &fErr) {
+			fErr.Path = path
 		}
+		return n
+	case fi.Mode()&os.ModeSymlink != 0:
+		sOnce.Do(sched)
 		file.Mask.Attr &= ^AttrNoName // not directory
 		if noData {
 			file.Mask.Attr |= AttrNoData
 		} else {
+			link, err := os.Readlink(file.Path)
+			if err != nil {
+				return newFileErrorNode("read link", file, subdir, err)
+			}
 			file.Mask.Attr &= ^AttrNoData
 			sum, err = file.Hash.Metadata([]byte(link))
 			if err != nil {
-				return pathErrNode("hash link", file, subdir, err)
+				return newFileErrorNode("hash link", file, subdir, err)
 			}
 		}
 
@@ -223,7 +228,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 			file.Mask.Attr &= ^AttrNoData
 			sum, err = file.sum()
 			if err != nil {
-				return pathErrNode("hash", file, subdir, err)
+				return newFileErrorNode("hash", file, subdir, err)
 			}
 		}
 	}
@@ -237,7 +242,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 	if inclusive && !subdir {
 		n.Sum, err = n.hashFileAttr()
 		if err != nil {
-			return pathErrNode("hash metadata for file", file, subdir, err)
+			return newFileErrorNode("hash metadata for file", file, subdir, err)
 		}
 	}
 	return n
@@ -279,28 +284,42 @@ func (rs *doOnce) Do(f func()) {
 	}
 }
 
-func pathErrNode(verb string, file File, subdir bool, err error) *Node {
-	return &Node{File: file, Err: pathErr(verb, file.Path, subdir, err)}
+func newFileErrorNode(action string, file File, subdir bool, err error) *Node {
+	return &Node{File: file, Err: newFileError(action, file.Path, subdir, err)}
 }
 
-func pathErr(verb, path string, subdir bool, err error) error {
-	var msg string
-	pErr := &os.PathError{}
-	if errors.As(err, &pErr) {
-		err = pErr.Err
+func newFileError(action, path string, subdir bool, err error) error {
+	return &FileError{
+		Action: action,
+		Path:   path,
+		Subdir: subdir,
+		Err:    err,
 	}
-	if !subdir {
-		msg = "%[2]s: failed to %[1]s: %[3]w"
-	} else {
-		msg = "failed to %s `%s': %w"
-	}
-	return fmt.Errorf(msg, verb, path, err)
 }
 
-func pathErrSimple(path string, err error) error {
+type FileError struct {
+	Action string
+	Path   string
+	Subdir bool
+	Err    error
+}
+
+func (e *FileError) Error() string {
+	err := e.Err
 	pErr := &os.PathError{}
-	if errors.As(err, &pErr) {
-		err = pErr.Err
+	fErr := &FileError{}
+	if errors.As(err, &pErr) && !errors.As(err, &fErr) {
+		err = pErr.Err // remove intermediate *PathError -- will be covered by FileError
 	}
-	return fmt.Errorf("%s: %w", path, err)
+	if e.Action == "" {
+		return fmt.Sprintf("%s: %s", e.Path, err)
+	}
+	if e.Subdir {
+		return fmt.Sprintf("failed to %s `%s': %s", e.Action, e.Path, err)
+	}
+	return fmt.Sprintf("%[2]s: failed to %[1]s: %[3]s", e.Action, e.Path, err)
+}
+
+func (e *FileError) Unwrap() error {
+	return e.Err
 }

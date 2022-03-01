@@ -46,16 +46,17 @@ xsum v1 MUST support two attribute mask formats:
 1. Human-readable with variable length
 2. Opaque with fixed length
 
-The human-readable attribute mask MUST include an attribute mode mask and MAY include an attribute options mask.
-- The attribute mode mask MUST contain four octal digits, each between 0 and 7.
+The human-readable attribute mask MUST begin with an attribute mode mask which MAY be followed by an attribute options mask.
+- The attribute mode mask MUST contain four octal digits, each between `0` and `7`.
 - If present, the attribute options mask MUST consist of a single `+` followed by at least one option.
 - Example: `7755+ugis`
 
-The opaque attribute mask MUST include both an attribute mode mask and an attribute options mask.
-- The attribute mode mask MUST contain three case-insensitive hexadecimal digits, each between 0 and f.
-- The attribute options mask MUST contain four case-insensitive hexadecimal digits, each between 0 and f.
+The opaque attribute mask MUST begin with an attribute mode mask that MUST be followed by an attribute options mask.
+- The attribute mask MUST begin with the case-insensitive hexadecimal digit `a`, denoting the format version.
+- The attribute mode mask MUST contain three case-insensitive hexadecimal digits, each between `0 and `f`.
+- The attribute options mask MUST contain four case-insensitive hexadecimal digits, each between `0` and `f`.
 - Future versions of xsum v1 MAY allow for attribute options masks longer than four digits to encode additional options.
-- Example: `fed4b00`
+- Example: `afed004b`
 
 If an attribute mask is not present, xsum v1 MUST reject directories, follow symlinks, and read from special files.
 
@@ -87,7 +88,7 @@ Notes:
 
 The human-readable attribute options mask MUST consist of a single `+` followed by any order of at least one option.
 
-The opaque attribute options mask SHALL encode the human-readable attribute options mask as a case-insensitive hexadecimal number in little endian format.
+The opaque attribute options mask SHALL encode the human-readable attribute options mask as a case-insensitive hexadecimal number in big endian format.
 The number MUST be the sum of all options included in the mask, where the value of each option is two to the power of the ordinal number in the list above.
 
 ## Tree Format
@@ -99,6 +100,78 @@ The xsum v1 tree format uses DER-encoded ASN.1 to achieve deterministic and cano
 2. Two files with identical attributes always provide the same attributes as input to the chosen hash function.
 3. Two files with different contents never provide the same content as input to the chosen hash function.
 4. Two files with different attributes never provide the same attributes as input to the chosen hash function.
+
+```
+--- ASN.1 Schema
+
+XSum DEFINITIONS  ::=  BEGIN
+    File  ::=  SEQUENCE  {
+        hash        [0]  EXPLICIT Hash OPTIONAL,
+        mode        [1]  EXPLICIT Mode OPTIONAL,
+        uid         [2]  EXPLICIT INTEGER OPTIONAL,
+        gid         [3]  EXPLICIT INTEGER OPTIONAL,
+        atime       [4]  EXPLICIT Timespec OPTIONAL,
+        mtime       [5]  EXPLICIT Timespec OPTIONAL,
+        ctime       [6]  EXPLICIT Timespec OPTIONAL,
+        btime       [7]  EXPLICIT Timespec OPTIONAL,
+        rdev        [8]  EXPLICIT INTEGER OPTIONAL,
+        xattr       [9]  EXPLICIT HashTree OPTIONAL
+    }
+    Hash  ::=  SEQUENCE  {
+        hashType    HashType,
+        hash        OCTET STRING
+    }
+    Mode  ::=  SEQUENCE  {
+        mask        BIT STRING,
+        mode        BIT STRING
+    }
+    Timespec  ::=  SEQUENCE  {
+        sec         INTEGER,
+        nsec        INTEGER
+    }
+    HashTree  ::=  SEQUENCE  {
+        hashType    HashType,
+        tree        SET OF HashEntry
+    }
+    HashEntry  ::=  SEQUENCE  {
+        hash        OCTET STRING,
+        name        OCTET STRING OPTIONAL
+    }
+    HashType  ::=  ENUMERATED {
+        none        (0),
+        md4         (1),
+        md5         (2),
+        sha1        (3),
+        sha256      (4),
+        sha224      (5),
+        sha512      (6),
+        sha384      (7),
+        sha512-224  (8),
+        sha512-256  (9),
+        sha3-224    (10),
+        sha3-256    (11),
+        sha3-384    (12),
+        sha3-512    (13),
+        blake2s256  (14),
+        blake2b256  (15),
+        blake2b384  (16),
+        blake2b512  (17),
+        rmd160      (18),
+        crc32       (19),
+        crc32c      (20),
+        crc32k      (21),
+        crc64iso    (22),
+        crc64ecma   (23),
+        adler32     (24),
+        fnv32       (25),
+        fnv32a      (26),
+        fnv64       (27),
+        fnv64a      (28),
+        fnv128      (29),
+        fnv128a     (30)
+    }
+END
+```
 
 Where:
 - `sum(x)` is a fixed-length checksum produced by the chosen hashing algorithm applied to `x`.

@@ -10,7 +10,6 @@ import (
 	"strings"
 )
 
-
 func NewAttrString(s string) (Attr, error) {
 	var attr Attr
 L:
@@ -38,11 +37,11 @@ func NewAttrHex(s string) (Attr, error) {
 	if len(b) > 2 {
 		b = b[:2]
 	} else if len(b) == 1 {
-		b = []byte{b[0], 0}
+		b = []byte{0, b[0]}
 	} else if len(b) == 0 {
 		b = []byte{0, 0}
 	}
-	return Attr(binary.LittleEndian.Uint16(b)), nil
+	return Attr(binary.BigEndian.Uint16(b)), nil
 }
 
 type Attr uint16
@@ -93,7 +92,7 @@ func (a Attr) String() string {
 
 func (a Attr) Hex() string {
 	b := make([]byte, 2)
-	binary.LittleEndian.PutUint16(b, uint16(a))
+	binary.BigEndian.PutUint16(b, uint16(a)) // FIXME: think more about little endian
 	return hex.EncodeToString(b)
 }
 
@@ -131,11 +130,6 @@ func (m Mode) Hex() string {
 	return hex.EncodeToString(b)[1:]
 }
 
-type Mask struct {
-	Mode Mode
-	Attr Attr
-}
-
 func NewMaskString(s string) (Mask, error) {
 	parts := strings.SplitN(s, "+", 2)
 	mode := strings.TrimSpace(parts[0])
@@ -158,11 +152,14 @@ func NewMaskHex(s string) (Mask, error) {
 	if len(s) < 3 {
 		return Mask{}, errors.New("mask too short")
 	}
-	mode, err := NewModeHex(s[:3])
+	if s[0] != 'a' && s[0] != 'A' {
+		return Mask{}, errors.New("invalid mask code")
+	}
+	mode, err := NewModeHex(s[1:4])
 	if err != nil {
 		return Mask{}, err
 	}
-	attr, err := NewAttrHex(s[3:])
+	attr, err := NewAttrHex(s[4:])
 	return Mask{
 		Mode: mode,
 		Attr: attr,
@@ -176,6 +173,11 @@ func NewMask(mode os.FileMode, attr Attr) Mask {
 	}
 }
 
+type Mask struct {
+	Mode Mode
+	Attr Attr
+}
+
 func (m Mask) String() string {
 	mode := m.Mode.String()
 	attrs := m.Attr.String()
@@ -186,5 +188,5 @@ func (m Mask) String() string {
 }
 
 func (m Mask) Hex() string {
-	return m.Mode.Hex() + m.Attr.Hex() // TODO: reconsider big-endian and also length
+	return fmt.Sprintf("%x%s%s", 0xa, m.Mode.Hex(), m.Attr.Hex())
 }
