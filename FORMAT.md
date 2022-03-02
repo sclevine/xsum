@@ -15,28 +15,22 @@ xsum v1 MUST output checksums in one of the following formats:
 # extended with attributes (e.g., directory, file with +i)
 [checksum type]:[checksum]:[attribute mask]  [file name]
 
-# simple with type (e.g., file without +i but with extended mode flag)
+# simple with type (e.g., file without +i but with extended mode flags)
 [checksum type]:[checksum]  [file name]
 
 # simple
 [checksum]  [file name]
 ```
 
-For example:
+Examples:
 ```
 $ xsum -fi .gitconfig # extended, human-readable
 sha256:01fa7ebf8c4b55cb4dce50725ca2978242086bb81758d5a1a23ba1d5802af5fd:7777+ugi  .gitconfig
 $ xsum -fio .gitconfig # extended, fixed-length
-sha256:01fa7ebf8c4b55cb4dce50725ca2978242086bb81758d5a1a23ba1d5802af5fd:fff4300  .gitconfig
-```
-
-```
-# xsum -f .gitconfig
+sha256:01fa7ebf8c4b55cb4dce50725ca2978242086bb81758d5a1a23ba1d5802af5fd:afff0103  .gitconfig
+$ xsum -f .gitconfig # simple (only directories have mask)
 sha256:05a024e3204055272b58624880f81389eccfe4808ceba8770ca26efcea100f37  .gitconfig
-```
-
-```
-# xsum .gitconfig
+# xsum .gitconfig # simple (directory input results in error)
 05a024e3204055272b58624880f81389eccfe4808ceba8770ca26efcea100f37  .gitconfig
 ```
 
@@ -46,17 +40,17 @@ xsum v1 MUST support two attribute mask formats:
 1. Human-readable with variable length
 2. Opaque with fixed length
 
-The human-readable attribute mask MUST begin with an attribute mode mask which MAY be followed by an attribute options mask.
+The human-readable attribute mask MUST begin with an *attribute mode mask* which MAY be followed by an *attribute options mask*.
 - The attribute mode mask MUST contain four octal digits, each between `0` and `7`.
 - If present, the attribute options mask MUST consist of a single `+` followed by at least one option.
 - Example: `7755+ugis`
 
-The opaque attribute mask MUST begin with an attribute mode mask that MUST be followed by an attribute options mask.
+The opaque attribute mask MUST begin with an *attribute mode mask* that MUST be followed by an *attribute options mask*.
 - The attribute mask MUST begin with the case-insensitive hexadecimal digit `a`, denoting the format version.
-- The attribute mode mask MUST contain three case-insensitive hexadecimal digits, each between `0 and `f`.
+- The attribute mode mask MUST contain three case-insensitive hexadecimal digits, each between `0` and `f`.
 - The attribute options mask MUST contain four case-insensitive hexadecimal digits, each between `0` and `f`.
 - Future versions of xsum v1 MAY allow for attribute options masks longer than four digits to encode additional options.
-- Example: `afed004b`
+- Example: `afed0143`
 
 If an attribute mask is not present, xsum v1 MUST reject directories, follow symlinks, and read from special files.
 
@@ -71,22 +65,25 @@ The opaque attribute mode mask SHALL encode the human-readable attribute mode ma
 
 For a given checksum output, the attribute options mask MAY include any of the follow options:
 
-0. `u` = Include UID (user ID)
-1. `g` = Include GID (group ID)
-2. `s` = Include file content equivalents for special files (e.g., device IDs for character devices)
-3. `t` = include mtime (file modification time)
-4. `c` = Include ctime (file creation time)
-5. `x` = Include xattr (extended file system attributes)
-6. `i` = Apply other attributes to the name file/directory itself
-7. `n` = Exclude file names when summing directories (files are sorted by data checksum)
-8. `e` = Exclude file contents
-9. `l` = Follow symlinks (without `l`, extended checksums only validate path)
+0.  `u` = Include UID (user ID)
+1.  `g` = Include GID (group ID)
+2.  NI  = *Include atime (file access time, reserved but not implemented)*
+3.  `t` = Include mtime (file modification time)
+4.  `c` = Include ctime (file creation time)
+5.  NI  = *Include btime (file birth time, reserved but not implemented)*
+6.  `s` = Include file content equivalents for special files (e.g., device IDs for character devices)
+7.  `x` = Include xattr (extended file system attributes)
+8.  `i` = Apply other attributes to the named file/directory itself
+9.  `n` = Exclude file names when summing directories (files are sorted by data checksum)
+10. `e` = Exclude file contents
+11. `l` = Follow symlinks (without `l`, extended checksums only validate path)
 
 Notes:
-- Without `i`, other attribute options MUST only apply to files/directories inside of directories.
-- Future versions of xsum v1 MAY introduce more flags, but they SHALL NOT remove existing flags.
+- Without `i`, attribute options SHALL only apply to files and directories inside an explicitly specified directory.
+- With `i`, attribute options SHALL result in the inclusion of metadata of explicitly specified files and directories.
+- Future versions of xsum v1 MAY introduce additional flags, but they SHALL NOT remove existing flags.
 
-The human-readable attribute options mask MUST consist of a single `+` followed by any order of at least one option.
+The human-readable attribute options mask MUST consist of a single `+` followed by any order of at least one attribute option.
 
 The opaque attribute options mask SHALL encode the human-readable attribute options mask as a case-insensitive hexadecimal number in big endian format.
 The number MUST be the sum of all options included in the mask, where the value of each option is two to the power of the ordinal number in the list above.
@@ -95,11 +92,13 @@ The number MUST be the sum of all options included in the mask, where the value 
 
 The xsum v1 tree format makes use of [Merkle Trees](https://en.wikipedia.org/wiki/Merkle_tree) to calculate metadata-inclusive checksums of files and directories.
 
-The xsum v1 tree format uses DER-encoded ASN.1 to achieve deterministic and canonical output:
-1. Two files with identical contents always provide the same content as input to the chosen hash function.
-2. Two files with identical attributes always provide the same attributes as input to the chosen hash function.
-3. Two files with different contents never provide the same content as input to the chosen hash function.
-4. Two files with different attributes never provide the same attributes as input to the chosen hash function.
+The xsum v1 tree format uses DER-encoded ASN.1 to achieve canonical and deterministic output, such that:
+1. For two files with identical file contents, xsum MUST always provide the same file content as input to the chosen hash function.
+2. For two files with identical file attributes, xsum MUST always provide the same file attributes as input to the chosen hash function.
+3. For two files with different file contents, xsum MUST NOT provide the same file content as input to the chosen hash function.
+4. For two files with different file attributes, xsum MUST NOT provide the same file attributes as input to the chosen hash function.
+
+### ASN.1 Schema
 
 ```
 --- ASN.1 Schema
@@ -107,7 +106,7 @@ The xsum v1 tree format uses DER-encoded ASN.1 to achieve deterministic and cano
 XSum DEFINITIONS  ::=  BEGIN
     File  ::=  SEQUENCE  {
         hash        [0]  EXPLICIT Hash OPTIONAL,
-        mode        [1]  EXPLICIT Mode OPTIONAL,
+        mode        [1]  EXPLICIT Mode,
         uid         [2]  EXPLICIT INTEGER OPTIONAL,
         gid         [3]  EXPLICIT INTEGER OPTIONAL,
         atime       [4]  EXPLICIT Timespec OPTIONAL,
@@ -173,40 +172,21 @@ XSum DEFINITIONS  ::=  BEGIN
 END
 ```
 
-Where:
-- `sum(x)` is a fixed-length checksum produced by the chosen hashing algorithm applied to `x`.
-- `filename` is the name of the file (basename, without preceding path elements).
-- `contents` is the contents of the file or directory, as defined below.
-- `sysattr` contains file system attributes, as defined below.
+Where the following definitions MUST be used as input into the chosen hash function:
+1. File without `i` => Raw file contents
+2. File with `i` => `File` (DER-encoded) such that `hash` contains hash of raw file contents
+3. Directory without `i` => `HashTree` (DER-encoded)
+4. Directory with `i` => `File` (DER-encoded) such that `hash` contains hash of `HashTree` (DER-encoded)
 
-Directory `contents` is encoded as a list of files, each encoded to `3*len(sum(x))` bytes as such:
-```
-[sum(filename)][sum(contents)][sum(sysattr)]
-```
-File encodings are sorted lexicographically and appended to each other with no delimiter. 
-
-File `contents` (for files with `+i`) is encoded as such:
-```
-[sum(contents)][sum(sysattr)]
-```
-
-`sysattr` is encoded as 68 bytes as such:
-```
-[mode{4}][uid{4}][gid{4}][device-id{8}][mtime{16}][ctime{16}][btime{16}]
-```
-Attributes not reflected in the attribute mask are set to zero.
-
-`mode{4}` is encoded as the sum of the file mode type bits, file mode permission bits, and file mode special bits (sticky, setuid, setgid).
-Bit ordering is as defined by Go's [`fs.FileMode`](https://pkg.go.dev/io/fs#FileMode).
-The file mode type bits are not maskable.
-
-`xattr` is encoded as a list of lexicographically sorted keys, each followed by `:`, a vowel, and a newline:
-```
-[key]:[value]\n
-```
-
+Notes:
+- An unordered, DER-encoded ASN.1 `SET` possess a deterministic encoding defined by DER.
+- Attribute options specified by the attribute options mask MUST determine whether `OPTIONAL` fields are provided.
+- `name` is the basename of the file (i.e., without preceding path elements).
+- `mode` and `mask` are encoded as the sum of the file mode type bits, file mode permission bits, and file mode special bits (sticky, setuid, setgid).
+  Bit ordering is as defined by Go's [`fs.FileMode`](https://pkg.go.dev/io/fs#FileMode).
+- `HashType` MUST always use the same value within the same ASN.1 structure.
 
 ### Unintentional Exclusions
 
-Any unintentional exclusions necessary to achieve reproducible checksums SHALL be considered to be as implemented in `xsum` CLI v1. 
+Any unintentional exclusions necessary to achieve reproducible checksums SHALL be specified as implemented in `xsum` CLI v1.
 

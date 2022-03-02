@@ -15,7 +15,7 @@ import (
 XSum DEFINITIONS  ::=  BEGIN
     File  ::=  SEQUENCE  {
         hash        [0]  EXPLICIT Hash OPTIONAL,
-        mode        [1]  EXPLICIT Mode OPTIONAL,
+        mode        [1]  EXPLICIT Mode,
         uid         [2]  EXPLICIT INTEGER OPTIONAL,
         gid         [3]  EXPLICIT INTEGER OPTIONAL,
         atime       [4]  EXPLICIT Timespec OPTIONAL,

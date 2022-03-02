@@ -16,30 +16,34 @@ import (
 )
 
 type Options struct {
-	General struct {
-		Algorithm string `short:"a" long:"algorithm" default:"sha256" description:"Use hashing algorithm"`
-		Write     string `short:"w" long:"write" optional:"yes" optional-value:"default" description:"Write a separate, adjacent file for each checksum\nBy default, filename will be [orig-name].[alg]\nUse -w=ext or -wext to override extension (no space!)"`
-		Check     bool   `short:"c" long:"check" description:"Validate checksums"`
-		Status    bool   `short:"s" long:"status" description:"With --check, suppress all output"`
-		Quiet     bool   `short:"q" long:"quiet" description:"With --check, suppress passing checksums"`
-	} `group:"General Options"`
+	General OptionsGeneral `group:"General Options"`
+	Mask    OptionsMask    `group:"Mask Options"`
+	Args    OptionsArgs    `positional-args:"yes"`
+}
 
-	Mask struct {
-		Mask       string `short:"m" long:"mask" description:"Apply attribute mask as [777]7[+ugx...]:\n+u\tInclude UID\n+g\tInclude GID\n+s\tInclude special file modes\n+t\tInclude modified time\n+c\tInclude created time\n+x\tInclude extended attrs\n+i\tInclude top-level metadata\n+n\tExclude file names\n+e\tExclude data\n+l\tAlways follow symlinks"`
-		Directory  bool   `short:"d" long:"dirs" description:"Directory mode (implies: -m 0000)"`
-		Portable   bool   `short:"p" long:"portable" description:"Portable mode, exclude names (implies: -m 0000+p)"`
-		Git        bool   `short:"g" long:"git" description:"Git mode (implies: -m 0100)"`
-		Full       bool   `short:"f" long:"full" description:"Full mode (implies: -m 7777+ug)"`
-		Extended   bool   `short:"x" long:"extended" description:"Extended mode (implies: -m 7777+ugxs)"`
-		Everything bool   `short:"e" long:"everything" description:"Everything mode (implies: -m 7777+ugxsct)"`
-		Inclusive  bool   `short:"i" long:"inclusive" description:"Include top-level metadata (enables mask, adds +i)"`
-		Follow     bool   `short:"l" long:"follow" description:"Follow symlinks (enables mask, adds +l)"`
-		Opaque     bool   `short:"o" long:"opaque" description:"Encode attribute mask to opaque, fixed-length hex (enables mask)"`
-	} `group:"Mask Options"`
+type OptionsGeneral struct {
+	Algorithm string `short:"a" long:"algorithm" default:"sha256" description:"Use hashing algorithm"`
+	Write     string `short:"w" long:"write" optional:"yes" optional-value:"default" description:"Write a separate, adjacent file for each checksum\nBy default, filename will be [orig-name].[alg]\nUse -w=ext or -wext to override extension (no space!)"`
+	Check     bool   `short:"c" long:"check" description:"Validate checksums"`
+	Status    bool   `short:"s" long:"status" description:"With --check, suppress all output"`
+	Quiet     bool   `short:"q" long:"quiet" description:"With --check, suppress passing checksums"`
+}
 
-	Args struct {
-		Paths []string `positional-arg-name:"paths"`
-	} `positional-args:"yes"`
+type OptionsMask struct {
+	Mask       string `short:"m" long:"mask" description:"Apply attribute mask as [777]7[+ugx...]:\n+u\tInclude UID\n+g\tInclude GID\n+s\tInclude special file modes\n+t\tInclude modified time\n+c\tInclude created time\n+x\tInclude extended attrs\n+i\tInclude top-level metadata\n+n\tExclude file names\n+e\tExclude data\n+l\tAlways follow symlinks"`
+	Directory  bool   `short:"d" long:"dirs" description:"Directory mode (implies: -m 0000)"`
+	Portable   bool   `short:"p" long:"portable" description:"Portable mode, exclude names (implies: -m 0000+p)"`
+	Git        bool   `short:"g" long:"git" description:"Git mode (implies: -m 0100)"`
+	Full       bool   `short:"f" long:"full" description:"Full mode (implies: -m 7777+ug)"`
+	Extended   bool   `short:"x" long:"extended" description:"Extended mode (implies: -m 7777+ugxs)"`
+	Everything bool   `short:"e" long:"everything" description:"Everything mode (implies: -m 7777+ugxsct)"`
+	Inclusive  bool   `short:"i" long:"inclusive" description:"Include top-level metadata (enables mask, adds +i)"`
+	Follow     bool   `short:"l" long:"follow" description:"Follow symlinks (enables mask, adds +l)"`
+	Opaque     bool   `short:"o" long:"opaque" description:"Encode attribute mask to opaque, fixed-length hex (enables mask)"`
+}
+
+type OptionsArgs struct {
+	Paths []string `positional-arg-name:"paths"`
 }
 
 type outputLevel int
@@ -130,7 +134,7 @@ func Run(opts *Options) error {
 	}
 	alg, err := cli.ParseHash(opts.General.Algorithm)
 	if err != nil {
-		return wrapInitError("Invalid algorithm: %s", err)
+		return wrapInitError("Invalid algorithm:", err)
 	}
 	if opts.General.Check {
 		return validateChecksums(opts.Args.Paths, alg, level)
@@ -142,7 +146,7 @@ func Run(opts *Options) error {
 	case opts.Mask.Mask != "":
 		mask, err = xsum.NewMaskString(opts.Mask.Mask)
 		if err != nil {
-			return wrapInitError("Invalid mask: %s", err)
+			return wrapInitError("Invalid mask:", err)
 		}
 	case opts.Mask.Portable:
 		mask = xsum.NewMask(00000, xsum.AttrNoName)

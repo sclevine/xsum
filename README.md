@@ -27,7 +27,6 @@ The data format used for extended checksums is specified in [FORMAT.md](FORMAT.m
 
 Extended checksums are portable across operating systems, as long as all requested attributes are supported.
 
-
 **NOTE:** By default, xsum only calculates checksums for **file/directory contents**, even in extended mode. 
 This means that by default, extended mode only includes attributes (e.g., permissions) for files/directories that are **inside a specified path**.
 Use `-i` to include top-level attributes. Without `-i`, `xsum` will not append an attribute mask for non-directories, for example:
@@ -83,6 +82,6 @@ sys	    0m0.937s
 - xsum only uses hashing algorithms present in Go's standard library and `golang.org/x/crypto` packages.
 - xsum uses a [subset](https://luca.ntop.org/Teaching/Appunti/asn1.html) of [DER-encoded ASN.1](https://letsencrypt.org/docs/a-warm-welcome-to-asn1-and-der) for deterministic and canonical encoding of all metadata and Merkle Trees.
 - Extended checksums (which include a checksum type and attribute mask) should only be validated with xsum to avoid collision with files that contain xsum's data format directly.
-- Some (generally non-cryptographic) hash functions supported by xsum may have high collision rates with certain patterns of data.
-  These hash functions may not be appropriate when taking checksums of directories.
+- Certain (generally non-cryptographic) hash functions supported by xsum may have high collision rates with specific patterns of data.
+  These hash functions may not be appropriate when used to generate checksums of directories.
   Unless you know what you are doing, choose a strong cryptographic hashing function (like sha256) when calculating checksums of directories.
