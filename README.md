@@ -11,8 +11,8 @@ The `xsum` CLI can be used in place of `shasum`, `md5sum`, or similar utilities.
    Merkle trees are the same data structure used to implement Docker images. 
    Merkle trees enable concurrency when generating/validating checksums of directories.
 - **Calculate checksums that include file attributes** such as type, UID/GID, permissions, xattr, etc.
-- Plugins, including:
-  - **xsum-pcm** (in repo): checksums of raw PCM in audio files (e.g., AAC, MP3, FLAC, ALAC) which remain constant when metadata tags change.
+- Execute plugins, including:
+  - [**xsum-pcm**](./cmd/xsum-pcm): checksums of raw PCM in audio files (e.g., AAC, MP3, FLAC, ALAC) which remain constant when metadata tags change.
 
 ## Performance
 
@@ -100,12 +100,22 @@ The data format used for extended checksums is specified in [FORMAT.md](FORMAT.m
 
 Extended checksums are portable across operating systems, as long as all requested attributes are supported.
 
-**NOTE:** By default, xsum only calculates checksums for **file/directory contents**, even in extended mode. 
-This means that by default, extended mode only includes attributes (e.g., permissions) for files/directories that are **inside a specified path**.
-Use `-i` to include top-level attributes. Without `-i`, `xsum` will not append an attribute mask for non-directories, for example:
+### Top-level Attributes
+
+By default, xsum only calculates checksums for file/directory **contents**, including when extended mode flags are used. 
+This means that by default, extended checksums only include attributes (e.g., permissions) for files/directories that are **inside a specified directory**.
+
+Use `-i` to include top-level attributes:
 ```
-$ xsum -d "The Beatles.tar"
-sha256:d0ed3ba499d2f79b4b4af9b5a9301918515c35fc99b0e57d88974f1ee74f7820  The Beatles.tar
+$ xsum -fi "The Beatles.tar"
+sha256:60f6435e916aae9c4b1a7d4d66011963d80c29744a42c2f0b2171e4c50e90113:7777+ugi  The Beatles.tar
+```
+
+Without `-i`, `xsum` will not append an attribute mask for non-directories, for example:
+```
+$ xsum -f "The Beatles.tar" "The Beatles"
+sha256:d0ed3ba499d2f79b4b4af9b5a9301918515c35fc99b0e57d88974f1ee74f7820  The Beatles.tar  # contents only!
+sha256:c1ee0a0a43b56ad834d12aa7187fdb367c9efd5b45dbd96163a9ce27830b5651:7777+ug  The Beatles
 ```
 
 Additionally, without any extended mode flags, xsum checksums follow the standard format used by other checksum tools:
