@@ -1,19 +1,90 @@
 # xsum
 
 **xsum** is a utility for calculating checksums that supports:
-- 18 cryptographic hashing algorithms
-- 12 non-cryptographic hashing algorithms
+- 18 cryptographic hash functions
+- 12 non-cryptographic hash functions
 
 The `xsum` CLI can be used in place of `shasum`, `md5sum`, or similar utilities.
 
-xsum differs from existing tools that calculate checksums in that it supports:
-- Calculating checksums of **directories** using [Merkle Trees](https://en.wikipedia.org/wiki/Merkle_tree).
-   Merkle trees are the data structure used by Docker images. They allow for concurrency when generating/validating checksums.
-- Calculating checksums that include file attributes such as type, UID/GID, permissions, xattr, etc.
+**xsum** differs from existing tools that calculate checksums in that it can:
+- **Calculate checksums of directories** using [Merkle trees](https://en.wikipedia.org/wiki/Merkle_tree).
+   Merkle trees are the same data structure used to implement Docker images. 
+   Merkle trees enable concurrency when generating/validating checksums of directories.
+- **Calculate checksums that include file attributes** such as type, UID/GID, permissions, xattr, etc.
 - Plugins, including:
-  - **xsum-pcm** (in repo): checksums of raw PCM in audio files (e.g., AAC, MP3, FLAC, ALAC) that remain constant when metadata tags change.
+  - **xsum-pcm** (in repo): checksums of raw PCM in audio files (e.g., AAC, MP3, FLAC, ALAC) which remain constant when metadata tags change.
 
-With extended mode flags (e.g., `xsum -d [paths...]`), xsum checksums follow a three-part format:
+## Performance
+
+xsum aims to:
+- Minimize execution time using concurrency
+- Avoid opening more files than available CPUs
+- Provide entirely deterministic output
+- Avoid buffering or delaying output
+
+This makes xsum ideal for calculating checksums of large directory structures (e.g., for archival purposes):
+```
+laptop:Library stephen$ time find "The Beatles/" -type f -print0|xargs -0 shasum -a 256
+...
+
+real    0m24.775s
+user    0m21.250s
+sys     0m2.209s
+```
+```
+laptop:Library stephen$ time xsum -f "The Beatles/"
+sha256:c1ee0a0a43b56ad834d12aa7187fdb367c9efd5b45dbd96163a9ce27830b5651:7777+ug  The Beatles
+
+real    0m2.832s
+user    0m19.328s
+sys     0m0.937s
+```
+
+## Usage
+
+```
+$ xsum -h
+Usage:
+  xsum [OPTIONS] [paths...]
+
+General Options:
+  -a, --algorithm=  Use hashing algorithm (default: sha256)
+  -w, --write=      Write a separate, adjacent file for each checksum
+                    By default, filename will be [orig-name].[alg]
+                    Use -w=ext or -wext to override extension (no space!)
+  -c, --check       Validate checksums
+  -s, --status      With --check, suppress all output
+  -q, --quiet       With --check, suppress passing checksums
+
+Mask Options:
+  -m, --mask=       Apply attribute mask as [777]7[+ugx...]:
+                    +u	Include UID
+                    +g	Include GID
+                    +s	Include special file modes
+                    +t	Include modified time
+                    +c	Include created time
+                    +x	Include extended attrs
+                    +i	Include top-level metadata
+                    +n	Exclude file names
+                    +e	Exclude data
+                    +l	Always follow symlinks
+  -d, --dirs        Directory mode (implies: -m 0000)
+  -p, --portable    Portable mode, exclude names (implies: -m 0000+p)
+  -g, --git         Git mode (implies: -m 0100)
+  -f, --full        Full mode (implies: -m 7777+ug)
+  -x, --extended    Extended mode (implies: -m 7777+ugxs)
+  -e, --everything  Everything mode (implies: -m 7777+ugxsct)
+  -i, --inclusive   Include top-level metadata (enables mask, adds +i)
+  -l, --follow      Follow symlinks (enables mask, adds +l)
+  -o, --opaque      Encode attribute mask to opaque, fixed-length hex (enables mask)
+
+Help Options:
+  -h, --help        Show this help message
+```
+
+## Format
+
+When extended mode flags are used (e.g., `xsum -d [paths...]`), xsum checksums follow a three-part format:
 ```
 [checksum type]:[checksum]:[attribute mask]  [file name]
 ```
@@ -54,32 +125,6 @@ Binaries for macOS, Linux, and Windows are [attached to each release](https://gi
 xsum may be imported as a Go package.
 See [godoc](https://pkg.go.dev/github.com/sclevine/xsum) for details.
 NOTE: the current Go API should not be considered stable.
-
-## Performance
-
-xsum aims to:
-- Minimize execution time using concurrency
-- Avoid opening more files than available CPUs
-- Provide entirely deterministic output
-- Avoid buffering or delaying output
-
-This makes xsum ideal for calculating checksums of large directory structures (e.g., for archival purposes):
-```
-laptop:Library stephen$ time find "The Beatles/" -type f -print0|xargs -0 shasum -a 256
-...
-
-real    0m24.775s
-user    0m21.250s
-sys     0m2.209s
-```
-```
-laptop:Library stephen$ time xsum -f "The Beatles/"
-sha256:c1ee0a0a43b56ad834d12aa7187fdb367c9efd5b45dbd96163a9ce27830b5651:7777+ug  The Beatles
-
-real    0m2.832s
-user    0m19.328s
-sys     0m0.937s
-```
 
 ## Security Considerations
 
