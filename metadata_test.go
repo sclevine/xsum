@@ -6,13 +6,14 @@ import (
 	"github.com/sclevine/xsum"
 )
 
+const attrAll = (xsum.AttrFollow<<1 - 1) &^ xsum.AttrAtime &^ xsum.AttrBtime
+
 func TestNewMaskString(t *testing.T) {
-	all := xsum.AttrFollow<<1 - 1
 	tests := []struct {
 		in   string
 		want xsum.Mask
 	}{
-		{"0777+ugxstcinel", xsum.NewMask(0777, all)},
+		{"0777+ugstcxinel", xsum.NewMask(0777, attrAll)},
 		{"4321+ul", xsum.NewMask(04321, xsum.AttrUID|xsum.AttrFollow)},
 		{"", xsum.NewMask(0, 0)},
 		{"+", xsum.NewMask(0, 0)},
@@ -33,12 +34,11 @@ func TestNewMaskString(t *testing.T) {
 }
 
 func TestMask_String(t *testing.T) {
-	all := xsum.AttrFollow<<1 - 1
 	tests := []struct {
 		in   xsum.Mask
 		want string
 	}{
-		{xsum.NewMask(0777, all), "0777+ugxstcinel"},
+		{xsum.NewMask(0777, attrAll), "0777+ugstcxinel"},
 		{xsum.NewMask(04321, xsum.AttrUID|xsum.AttrFollow), "4321+ul"},
 		{xsum.NewMask(0, 0), "0000"},
 		{xsum.NewMask(01, 0), "0001"},
@@ -52,16 +52,15 @@ func TestMask_String(t *testing.T) {
 }
 
 func TestNewMaskHex(t *testing.T) {
-	all := xsum.AttrFollow<<1 - 1
 	tests := []struct {
 		in   string
 		want xsum.Mask
 	}{
-		{"1FFFF03", xsum.NewMask(0777, all)},
-		{"8d10102", xsum.NewMask(04321, xsum.AttrUID|xsum.AttrFollow)},
-		{"000", xsum.NewMask(0, 0)},
-		{"001", xsum.NewMask(01, 0)},
-		{"00001", xsum.NewMask(0, xsum.AttrUID)},
+		{"A1FF0FDB", xsum.NewMask(0777, attrAll)},
+		{"a8d10801", xsum.NewMask(04321, xsum.AttrUID|xsum.AttrFollow)},
+		{"a000", xsum.NewMask(0, 0)},
+		{"a001", xsum.NewMask(01, 0)},
+		{"a00001", xsum.NewMask(0, xsum.AttrUID)},
 	}
 	for _, tt := range tests {
 		out, err := xsum.NewMaskHex(tt.in)
@@ -76,16 +75,15 @@ func TestNewMaskHex(t *testing.T) {
 }
 
 func TestMask_Hex(t *testing.T) {
-	all := xsum.AttrFollow<<1 - 1
 	tests := []struct {
 		in   xsum.Mask
 		want string
 	}{
-		{xsum.NewMask(0777, all), "1ffff03"},
-		{xsum.NewMask(04321, xsum.AttrUID|xsum.AttrFollow), "8d10102"},
-		{xsum.NewMask(0, 0), "0000000"},
-		{xsum.NewMask(01, 0), "0010000"},
-		{xsum.NewMask(0, xsum.AttrUID), "0000100"},
+		{xsum.NewMask(0777, attrAll), "a1ff0fdb"},
+		{xsum.NewMask(04321, xsum.AttrUID|xsum.AttrFollow), "a8d10801"},
+		{xsum.NewMask(0, 0), "a0000000"},
+		{xsum.NewMask(01, 0), "a0010000"},
+		{xsum.NewMask(0, xsum.AttrUID), "a0000001"},
 	}
 	for _, tt := range tests {
 		if out := tt.in.Hex(); out != tt.want {
