@@ -5,10 +5,10 @@
 The `xsum` CLI can be used in place of `shasum`, `md5sum`, or similar utilities.
 
 xsum differs from existing tools that calculate checksums in that it supports:
-1. calculating checksums of **directories** using [Merkle Trees](https://en.wikipedia.org/wiki/Merkle_tree). 
+1. Calculating checksums of **directories** using [Merkle Trees](https://en.wikipedia.org/wiki/Merkle_tree).
    Merkle trees are the data structure used by Docker images. They allow for concurrency when generating/validating checksums.
-2. calculating checksums that include file attributes such as UID/GID, permissions, xattr, special file metadata, etc.
-3. plugins, including:
+2. Calculating checksums that include file attributes such as UID/GID, permissions, xattr, special file metadata, etc.
+3. Plugins, including:
    1. **xsum-pcm** (in repo): checksums of raw PCM audio in audio files (e.g., AAC, MP3, FLAC, ALAC) that remain constant when metadata tags change.
 
 With extended mode flags (e.g., `xsum -d [paths...]`), xsum checksums follow a three-part format:
@@ -20,8 +20,8 @@ For example:
 sha256:c1ee0a0a43b56ad834d12aa7187fdb367c9efd5b45dbd96163a9ce27830b5651:7777+ug  The Beatles
 ```
 This allows checksums to:
-1. encode which file/directory attributes (e.g., UNIX permissions) are included in the checksum.
-2. specify which hashing algorithm should be used to validate them.
+1. Encode which file/directory attributes (e.g., UNIX permissions) are included in the checksum.
+2. Specify which hashing algorithm should be used to validate them.
 
 The data format used for extended checksums is specified in [FORMAT.md](FORMAT.md) and can be considered stable.
 

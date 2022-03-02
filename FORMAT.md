@@ -93,10 +93,10 @@ The number MUST be the sum of all options included in the mask, where the value 
 The xsum v1 tree format makes use of [Merkle Trees](https://en.wikipedia.org/wiki/Merkle_tree) to calculate metadata-inclusive checksums of files and directories.
 
 The xsum v1 tree format uses DER-encoded ASN.1 to achieve canonical and deterministic output, such that:
-1. For two files with identical file contents, xsum MUST always provide the same file content as input to the chosen hash function.
-2. For two files with identical file attributes, xsum MUST always provide the same file attributes as input to the chosen hash function.
-3. For two files with different file contents, xsum MUST NOT provide the same file content as input to the chosen hash function.
-4. For two files with different file attributes, xsum MUST NOT provide the same file attributes as input to the chosen hash function.
+- For two files with identical file contents, xsum MUST always provide the same file content as input to the chosen hash function.
+- For two files with identical file attributes, xsum MUST always provide the same file attributes as input to the chosen hash function.
+- For two files with different file contents, xsum MUST NOT provide the same file content as input to the chosen hash function.
+- For two files with different file attributes, xsum MUST NOT provide the same file attributes as input to the chosen hash function.
 
 ### ASN.1 Schema
 
@@ -173,10 +173,10 @@ END
 ```
 
 Where the following definitions MUST be used as input into the chosen hash function:
-1. File without `i` => Raw file contents
-2. File with `i` => `File` (DER-encoded) such that `hash` contains hash of raw file contents
-3. Directory without `i` => `HashTree` (DER-encoded)
-4. Directory with `i` => `File` (DER-encoded) such that `hash` contains hash of `HashTree` (DER-encoded)
+- File without `i` => Raw file contents
+- File with `i` => `File` (DER-encoded) such that `hash` contains hash of raw file contents
+- Directory without `i` => `HashTree` (DER-encoded)
+- Directory with `i` => `File` (DER-encoded) such that `hash` contains hash of `HashTree` (DER-encoded)
 
 Notes:
 - An unordered, DER-encoded ASN.1 `SET` possess a deterministic encoding defined by DER.
