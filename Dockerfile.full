@@ -1,0 +1,10 @@
+FROM golang:bullseye AS builder
+WORKDIR /workspace
+COPY . .
+ARG version="0.0.0"
+RUN go build -ldflags "-X main.Version=$version" ./cmd/xsum
+RUN go build -ldflags "-X main.Version=$version" ./cmd/xsum-pcm
+FROM jrottenberg/ffmpeg:4.4-alpine
+COPY --from=builder /workspace/xsum /bin/xsum
+COPY --from=builder /workspace/xsum-pcm /bin/xsum-pcm
+ENTRYPOINT ["/bin/xsum"]

@@ -2,6 +2,7 @@
 .idea
 /xsum
 /xsum-pcm
+/build-v*
 
 # Binaries for programs and plugins
 *.exe

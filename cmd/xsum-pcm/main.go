@@ -12,6 +12,8 @@ import (
 	"github.com/sclevine/xsum/cli"
 )
 
+var Version = "0.0.0"
+
 func main() {
 	alg := "sha256"
 	if strings.HasPrefix(os.Args[0], "xsum-pcm-") {

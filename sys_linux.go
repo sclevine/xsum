@@ -11,7 +11,7 @@ func (f *File) sys(fi os.FileInfo) (*encoding.Sys, error) {
 	if stat, ok := fi.Sys().(*syscall.Stat_t); ok && stat != nil {
 		mtime := encoding.Timespec(stat.Mtim)
 		ctime := encoding.Timespec(stat.Ctim)
-		hashes, err := getXattr(f.Path, f.Hash)
+		hashes, err := getXattr(f.Path, f.Hash) // todo: defer unless needed
 		if err != nil {
 			return nil, err
 		}

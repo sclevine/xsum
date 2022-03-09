@@ -1,6 +1,6 @@
 module github.com/sclevine/xsum
 
-go 1.14
+go 1.17
 
 require (
 	github.com/jessevdk/go-flags v1.4.0

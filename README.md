@@ -1,5 +1,8 @@
 # xsum
 
+[![GoDoc](https://pkg.go.dev/badge/github.com/sclevine/ztgrep?status.svg)](https://pkg.go.dev/github.com/sclevine/xsum)
+[![Tests](https://github.com/sclevine/xsum/actions/workflows/go.yml/badge.svg)](https://github.com/sclevine/xsum/actions/workflows/go.yml)
+
 **xsum** is a utility for calculating checksums that supports:
 - 18 cryptographic hash functions
 - 12 non-cryptographic hash functions
@@ -8,9 +11,9 @@ The `xsum` CLI can be used in place of `shasum`, `md5sum`, or similar utilities.
 
 **xsum** differs from existing tools that calculate checksums in that it can:
 - **Calculate a single checksum for an entire directory structure** using [Merkle trees](https://en.wikipedia.org/wiki/Merkle_tree).
-  - Merkle trees enable concurrency when generating/validating checksums of directories. (See [Performance](#performance).)
+  - Merkle trees allow for concurrency when calculating checksums of directories. (See [Performance](#performance).)
   - Merkle trees are the same data structure used reference layers in Docker images.
-- **Calculate checksums that include file attributes** such as type, UID/GID, permissions, xattr, etc. (See [Format](#format).)
+- **Calculate checksums that include file attributes** such as type, UID, GID, permissions, etc. (See [Format](#format).)
 - Execute plugins, including:
   - [**xsum-pcm**](./cmd/xsum-pcm): calculate checksums of raw PCM inside audio files (e.g., AAC, MP3, FLAC, ALAC)
     - Checksums remain constant when audio file metadata/tags change, but still protect audio stream.
@@ -146,17 +149,18 @@ xsum: The Beatles: is a directory
 
 ## Installation
 
-Binaries for macOS, Linux, and Windows are [attached to each release](https://github.com/sclevine/xsum/releases). (WIP)
+Binaries for macOS, Linux, and Windows are [attached to each release](https://github.com/sclevine/xsum/releases).
 
 To install `xsum-pcm`, copy the binary to `$PATH`. Invoke it with `xsum -a pcm`.
 
-`xsum` is also available as a [Docker image](https://hub.docker.com/r/sclevine/xsum) (includes `xsum-pcm`). (WIP)
+`xsum` is also available as a [Docker image](https://hub.docker.com/r/sclevine/xsum) (includes `xsum-pcm` in `:full`).
 
 ## Go Package
 
 xsum may be imported as a Go package.
 See [godoc](https://pkg.go.dev/github.com/sclevine/xsum) for details.
-NOTE: the current Go API should not be considered stable.
+
+NOTE: The current Go API should not be considered stable.
 
 ## Security Considerations
 

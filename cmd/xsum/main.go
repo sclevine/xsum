@@ -15,6 +15,8 @@ import (
 	"github.com/sclevine/xsum/cli"
 )
 
+var Version = "0.0.0"
+
 type Options struct {
 	General OptionsGeneral `group:"General Options"`
 	Mask    OptionsMask    `group:"Mask Options"`
@@ -27,6 +29,7 @@ type OptionsGeneral struct {
 	Check     bool   `short:"c" long:"check" description:"Validate checksums"`
 	Status    bool   `short:"s" long:"status" description:"With --check, suppress all output"`
 	Quiet     bool   `short:"q" long:"quiet" description:"With --check, suppress passing checksums"`
+	Version   bool   `short:"v" long:"version" description:"Show version"`
 }
 
 type OptionsMask struct {
@@ -102,6 +105,10 @@ func (e *InitError) Error() string {
 }
 
 func Run(opts *Options) error {
+	if opts.General.Version {
+		fmt.Printf("xsum v%s\n", Version)
+		return nil
+	}
 	if multipleTrue(
 		opts.General.Check,
 		opts.Mask.Mask != "",

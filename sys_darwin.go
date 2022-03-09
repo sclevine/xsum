@@ -12,7 +12,8 @@ func (f *File) sys(fi os.FileInfo) (*encoding.Sys, error) {
 		mtime := encoding.Timespec(stat.Mtimespec)
 		ctime := encoding.Timespec(stat.Ctimespec)
 		rdev := uint64(stat.Rdev)
-		hashes, err := getXattr(f.Path, f.Hash)
+		// FIXME: skip if stdin
+		hashes, err := getXattr(f.Path, f.Hash) // TODO: defer unless needed
 		if err != nil {
 			return nil, err
 		}

@@ -92,7 +92,7 @@ func (a Attr) String() string {
 
 func (a Attr) Hex() string {
 	b := make([]byte, 2)
-	binary.BigEndian.PutUint16(b, uint16(a)) // FIXME: think more about little endian
+	binary.BigEndian.PutUint16(b, uint16(a))
 	return hex.EncodeToString(b)
 }
 
