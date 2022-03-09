@@ -144,8 +144,6 @@ var emptyASN1 = []interface{}(nil)
 type HashType asn1.Enumerated
 
 const (
-	HashUnknown HashType = -1
-
 	HashNone HashType = iota
 
 	// crypto
@@ -181,6 +179,8 @@ const (
 	HashFNV64a
 	HashFNV128
 	HashFNV128a
+
+	HashUnknown HashType = -1
 )
 
 func FileASN1DER(hashType HashType, hash []byte, mode, mask os.FileMode, sys *Sys) ([]byte, error) {

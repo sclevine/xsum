@@ -49,7 +49,7 @@ func TestFileASN1DER(t *testing.T) {
 		0x04, 0x06, 0x63, 0x63, 0x63, 0x33, 0x33, 0x33, // xattr1 Hash
 		0x04, 0x06, 0x78, 0x61, 0x74, 0x74, 0x72, 0x31, // xattr1 Name
 	}; !bytes.Equal(der, exp) {
-		t.Fatalf("encoding.FileASN1DER([test data]) = % x, expected % x", der, exp)
+		t.Fatalf("encoding.FileASN1DER([test data]) =\n% x\nexpected:\n% x", der, exp)
 	}
 }
 func TestFileASN1DER_Empty(t *testing.T) {
