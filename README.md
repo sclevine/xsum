@@ -12,7 +12,7 @@ The `xsum` CLI can be used in place of `shasum`, `md5sum`, or similar utilities.
 **xsum** differs from existing tools that calculate checksums in that it can:
 - **Calculate a single checksum for an entire directory structure** using [Merkle trees](https://en.wikipedia.org/wiki/Merkle_tree).
   - Merkle trees allow for concurrency when calculating checksums of directories. (See [Performance](#performance).)
-  - Merkle trees are the same data structure used reference layers in Docker images.
+  - Merkle trees are the same data structure used to reference layers in Docker images.
 - **Calculate checksums that include file attributes** such as type, UID, GID, permissions, etc. (See [Format](#format).)
 - Execute plugins, including:
   - [**xsum-pcm**](./cmd/xsum-pcm): calculate checksums of raw PCM inside audio files (e.g., AAC, MP3, FLAC, ALAC)
