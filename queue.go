@@ -4,25 +4,25 @@ package xsum
 // Neither enqueue nor dequeue are individually reentrant.
 // However, both may be called at the same time.
 type nodeQueue struct {
-	front, back *nodeQueueElement
+	front, back *nodeElement
 }
 
-type nodeQueueElement struct {
+type nodeElement struct {
 	node <-chan *Node
-	next chan *nodeQueueElement
+	next chan *nodeElement
 }
 
 func newNodeQueue() *nodeQueue {
-	elem := &nodeQueueElement{
-		next: make(chan *nodeQueueElement, 1),
+	elem := &nodeElement{
+		next: make(chan *nodeElement, 1),
 	}
 	return &nodeQueue{elem, elem}
 }
 
 func (q *nodeQueue) enqueue(ch <-chan *Node) {
-	elem := &nodeQueueElement{
+	elem := &nodeElement{
 		node: ch,
-		next: make(chan *nodeQueueElement, 1),
+		next: make(chan *nodeElement, 1),
 	}
 	q.front.next <- elem
 	q.front = elem

@@ -7,12 +7,15 @@
 The `xsum` CLI can be used in place of `shasum`, `md5sum`, or similar utilities.
 
 **xsum** differs from existing tools that calculate checksums in that it can:
-- **Calculate checksums of directories** using [Merkle trees](https://en.wikipedia.org/wiki/Merkle_tree).
-   Merkle trees are the same data structure used to implement Docker images. 
-   Merkle trees enable concurrency when generating/validating checksums of directories.
-- **Calculate checksums that include file attributes** such as type, UID/GID, permissions, xattr, etc.
+- **Calculate a single checksum for an entire directory structure** using [Merkle trees](https://en.wikipedia.org/wiki/Merkle_tree).
+  - Merkle trees enable concurrency when generating/validating checksums of directories. (See [Performance](#performance).)
+  - Merkle trees are the same data structure used reference layers in Docker images.
+- **Calculate checksums that include file attributes** such as type, UID/GID, permissions, xattr, etc. (See [Format](#format).)
 - Execute plugins, including:
-  - [**xsum-pcm**](./cmd/xsum-pcm): checksums of raw PCM in audio files (e.g., AAC, MP3, FLAC, ALAC) which remain constant when metadata tags change.
+  - [**xsum-pcm**](./cmd/xsum-pcm): calculate checksums of raw PCM inside audio files (e.g., AAC, MP3, FLAC, ALAC)
+    - Checksums remain constant when audio file metadata/tags change, but still protect audio stream.
+    - Install `xsum-pcm` to `$PATH` and use `xsum -a pcm` to invoke.
+    - Requires `ffmpeg`.
 
 ## Performance
 
@@ -22,7 +25,9 @@ xsum aims to:
 - Provide entirely deterministic output
 - Avoid buffering or delaying output
 
-This makes xsum ideal for calculating checksums of large directory structures (e.g., for archival purposes):
+This makes xsum ideal for calculating checksums of large directory structures (e.g., for archival purposes).
+
+With `shasum -a 256`, ~21 seconds:
 ```
 laptop:Library stephen$ time find "The Beatles/" -type f -print0|xargs -0 shasum -a 256
 ...
@@ -31,6 +36,18 @@ real    0m24.775s
 user    0m21.250s
 sys     0m2.209s
 ```
+
+With `xsum`, defaulting to sha256, ~3 seconds:
+```
+laptop:Library stephen$ time find "The Beatles/" -type f -print0|xargs -0 xsum
+...
+
+real    0m2.882s
+user    0m19.297s
+sys     0m0.971s
+```
+
+Checksum of entire directory structure (including UID/GID/perms), using ASN.1 Merkle tree, ~3 seconds:
 ```
 laptop:Library stephen$ time xsum -f "The Beatles/"
 sha256:c1ee0a0a43b56ad834d12aa7187fdb367c9efd5b45dbd96163a9ce27830b5651:7777+ug  The Beatles
@@ -84,17 +101,18 @@ Help Options:
 
 ## Format
 
-When extended mode flags are used (e.g., `xsum -d [paths...]`), xsum checksums follow a three-part format:
+When extended flags are used (e.g., `xsum -d [paths...]`), xsum checksums follow a three-part format:
 ```
-[checksum type]:[checksum]:[attribute mask]  [file name]
+[checksum type]:[checksum](:[attribute mask])  [file name]
 ```
 For example:
 ```
 sha256:c1ee0a0a43b56ad834d12aa7187fdb367c9efd5b45dbd96163a9ce27830b5651:7777+ug  The Beatles
+sha256:d0ed3ba499d2f79b4b4af9b5a9301918515c35fc99b0e57d88974f1ee74f7820  The Beatles.tar
 ```
-This allows checksums to:
-1. Encode which file/directory attributes (e.g., UNIX permissions) are included in the hash.
-2. Specify which hashing algorithm should be used to validate hashes.
+This allows xsum to:
+1. Encode which attributes (e.g., UNIX permission bits) are included in the hash (if applicable).
+2. Specify which hashing algorithm should be used to validate each hash.
 
 The data format used for extended checksums is specified in [FORMAT.md](FORMAT.md) and may be considered stable.
 
@@ -103,34 +121,38 @@ Extended checksums are portable across operating systems, as long as all request
 ### Top-level Attributes
 
 By default, xsum only calculates checksums for file/directory **contents**, including when extended mode flags are used. 
-This means that by default, extended checksums only include attributes (e.g., permissions) for files/directories that are **inside a specified directory**.
+This means that by default, extended checksums only include attributes (e.g., UNIX permissions) for files/directories that are **inside a specified directory**.
 
 Use `-i` to include top-level attributes:
 ```
-$ xsum -fi "The Beatles.tar"
+$ xsum -fi "The Beatles.tar" "The Beatles/"
 sha256:60f6435e916aae9c4b1a7d4d66011963d80c29744a42c2f0b2171e4c50e90113:7777+ugi  The Beatles.tar
+sha256:7a90cbb0973419f0d3b10a82e53281aa3f0f317ab4ecce10570f26a7404975a1:7777+ugi  The Beatles
 ```
 
 Without `-i`, `xsum` will not append an attribute mask for non-directories, for example:
 ```
-$ xsum -f "The Beatles.tar" "The Beatles"
+$ xsum -f "The Beatles.tar" "The Beatles/"
 sha256:d0ed3ba499d2f79b4b4af9b5a9301918515c35fc99b0e57d88974f1ee74f7820  The Beatles.tar  # contents only!
 sha256:c1ee0a0a43b56ad834d12aa7187fdb367c9efd5b45dbd96163a9ce27830b5651:7777+ug  The Beatles
 ```
 
-Additionally, without any extended mode flags, xsum checksums follow the standard format used by other checksum tools:
+Additionally, without any extended flags, xsum checksums and errors follow the standard output format used by other checksum tools:
 ```
-$ xsum "The Beatles.tar"
+$ xsum "The Beatles.tar" "The Beatles/"
 d0ed3ba499d2f79b4b4af9b5a9301918515c35fc99b0e57d88974f1ee74f7820  The Beatles.tar
+xsum: The Beatles: is a directory
 ```
 
-### Installation
+## Installation
 
 Binaries for macOS, Linux, and Windows are [attached to each release](https://github.com/sclevine/xsum/releases). (WIP)
 
-`xsum` is also available as a [Docker image](https://hub.docker.com/r/sclevine/xsum). (WIP)
+To install `xsum-pcm`, copy the binary to `$PATH`. Invoke it with `xsum -a pcm`.
 
-### Go Package
+`xsum` is also available as a [Docker image](https://hub.docker.com/r/sclevine/xsum) (includes `xsum-pcm`). (WIP)
+
+## Go Package
 
 xsum may be imported as a Go package.
 See [godoc](https://pkg.go.dev/github.com/sclevine/xsum) for details.

@@ -144,6 +144,8 @@ var emptyASN1 = []interface{}(nil)
 type HashType asn1.Enumerated
 
 const (
+	HashUnknown HashType = -1
+
 	HashNone HashType = iota
 
 	// crypto
@@ -210,6 +212,10 @@ func FileASN1DER(hashType HashType, hash []byte, mode, mask os.FileMode, sys *Sy
 			HashType: asn1.Enumerated(hashType),
 			Hash:     hash,
 		}
+	}
+
+	if sys == nil {
+		sys = &Sys{}
 	}
 
 	// use int64 for uint32 to permit larger integer UID/GID in future

@@ -61,7 +61,7 @@ const (
 	sModeSticky = 01000
 )
 
-func (n *Node) hashFileAttr() ([]byte, error) {
+func hashFileAttr(n *Node) ([]byte, error) {
 	if n.Sys == nil && n.Mask.Attr&(AttrUID|AttrGID|AttrSpecial|AttrMtime|AttrCtime) != 0 {
 		return nil, ErrNoStat
 	}

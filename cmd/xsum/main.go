@@ -179,7 +179,9 @@ func Run(opts *Options) error {
 }
 
 func outputChecksums(paths []string, mask xsum.Mask, hash xsum.Hash, basic, opaque bool) error {
-	return xsum.New(basic).EachList(convertToFiles(paths, mask, hash), func(n *xsum.Node) error {
+	sum := &xsum.Sum{NoDirs: basic}
+	files := convertToFiles(paths, mask, hash)
+	return sum.EachList(files, func(n *xsum.Node) error {
 		if n.Err != nil {
 			log.Printf("xsum: %s", n.Err)
 			return nil
@@ -200,8 +202,10 @@ func formatChecksum(n *xsum.Node, basic, opaque bool) string {
 	}
 }
 
-func writeChecksums(paths []string, mask xsum.Mask, alg xsum.Hash, basic, opaque bool, ext string) error {
-	return xsum.New(basic).EachList(convertToFiles(paths, mask, alg), func(n *xsum.Node) error {
+func writeChecksums(paths []string, mask xsum.Mask, hash xsum.Hash, basic, opaque bool, ext string) error {
+	sum := &xsum.Sum{NoDirs: basic}
+	files := convertToFiles(paths, mask, hash)
+	return sum.EachList(files, func(n *xsum.Node) error {
 		if n.Err != nil {
 			log.Printf("xsum: %s", n.Err)
 			return nil
@@ -211,7 +215,7 @@ func writeChecksums(paths []string, mask xsum.Mask, alg xsum.Hash, basic, opaque
 			return nil
 		}
 		if ext == "" {
-			ext = alg.String()
+			ext = hash.String()
 		}
 		abs, err := filepath.Abs(n.Path)
 		if err != nil {
@@ -236,13 +240,13 @@ func writeChecksums(paths []string, mask xsum.Mask, alg xsum.Hash, basic, opaque
 	})
 }
 
-func validateChecksums(indexes []string, alg xsum.Hash, level outputLevel) error {
+func validateChecksums(indexes []string, hash xsum.Hash, level outputLevel) error {
 	files := make(chan xsum.File, 1)
 	sums := make(chan string, 1)
 	go func() {
 		defer close(files)
 		if len(indexes) == 0 {
-			readIndexStdin(alg, func(f xsum.File, sum string) {
+			readIndexStdin(hash, func(f xsum.File, sum string) {
 				files <- f
 				sums <- sum
 			})
@@ -251,12 +255,12 @@ func validateChecksums(indexes []string, alg xsum.Hash, level outputLevel) error
 		for _, path := range indexes {
 			switch path {
 			case "-":
-				readIndexStdin(alg, func(f xsum.File, sum string) {
+				readIndexStdin(hash, func(f xsum.File, sum string) {
 					files <- f
 					sums <- sum
 				})
 			default:
-				readIndexPath(path, alg, func(f xsum.File, sum string) {
+				readIndexPath(path, hash, func(f xsum.File, sum string) {
 					files <- f
 					sums <- sum
 				})
@@ -264,7 +268,8 @@ func validateChecksums(indexes []string, alg xsum.Hash, level outputLevel) error
 		}
 	}()
 	failed := 0
-	if err := xsum.New(false).Each(files, func(n *xsum.Node) error {
+	sum := &xsum.Sum{}
+	if err := sum.Each(files, func(n *xsum.Node) error {
 		if n.Err != nil {
 			log.Printf("xsum: %s", n.Err)
 		}
@@ -295,21 +300,21 @@ func validateChecksums(indexes []string, alg xsum.Hash, level outputLevel) error
 	return nil
 }
 
-func readIndexPath(path string, alg xsum.Hash, fn func(xsum.File, string)) {
+func readIndexPath(path string, hash xsum.Hash, fn func(xsum.File, string)) {
 	f, err := os.Open(path)
 	if err != nil {
 		log.Printf("xsum: %s", err)
 		return
 	}
 	defer f.Close()
-	readIndex(f, path, alg, fn)
+	readIndex(f, path, hash, fn)
 }
 
-func readIndexStdin(alg xsum.Hash, fn func(xsum.File, string)) {
-	readIndex(os.Stdin, "standard input", alg, fn)
+func readIndexStdin(hash xsum.Hash, fn func(xsum.File, string)) {
+	readIndex(os.Stdin, "standard input", hash, fn)
 }
 
-func readIndex(f *os.File, path string, alg xsum.Hash, fn func(xsum.File, string)) {
+func readIndex(f *os.File, path string, hash xsum.Hash, fn func(xsum.File, string)) {
 	scan := bufio.NewScanner(f)
 	for scan.Scan() {
 		entry := scan.Text()
@@ -321,19 +326,19 @@ func readIndex(f *os.File, path string, alg xsum.Hash, fn func(xsum.File, string
 			log.Printf("xsum: %s: invalid entry `%s'", path, entry)
 			continue
 		}
-		hash := lines[0]
+		fhash := lines[0]
 		fpath := lines[1]
 
 		var mask xsum.Mask
 
-		if p := strings.SplitN(hash, ":", 3); len(p) > 1 {
+		if p := strings.SplitN(fhash, ":", 3); len(p) > 1 {
 			var err error
-			alg, err = cli.ParseHash(p[0])
+			hash, err = cli.ParseHash(p[0])
 			if err != nil {
 				log.Printf("xsum: %s: invalid algorithm: %s", path, err)
 				continue
 			}
-			hash = p[1]
+			fhash = p[1]
 			if len(p) > 2 {
 				if len(p[2]) > 4 && p[2][4] != '+' {
 					mask, err = xsum.NewMaskHex(p[2])
@@ -350,15 +355,15 @@ func readIndex(f *os.File, path string, alg xsum.Hash, fn func(xsum.File, string
 				}
 			}
 		}
-		fn(xsum.File{Hash: alg, Path: fpath, Mask: mask}, strings.ToLower(hash))
+		fn(xsum.File{Hash: hash, Path: fpath, Mask: mask}, strings.ToLower(fhash))
 	}
 }
 
-func convertToFiles(paths []string, mask xsum.Mask, alg xsum.Hash) []xsum.File {
+func convertToFiles(paths []string, mask xsum.Mask, hash xsum.Hash) []xsum.File {
 	var out []xsum.File
 	if len(paths) == 0 {
 		out = append(out, xsum.File{
-			Hash:  alg,
+			Hash:  hash,
 			Path:  "-",
 			Mask:  mask,
 			Stdin: true,
@@ -370,7 +375,7 @@ func convertToFiles(paths []string, mask xsum.Mask, alg xsum.Hash) []xsum.File {
 			stdin = true
 		}
 		out = append(out, xsum.File{
-			Hash:  alg,
+			Hash:  hash,
 			Path:  path,
 			Mask:  mask,
 			Stdin: stdin,

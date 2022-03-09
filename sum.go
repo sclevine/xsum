@@ -18,21 +18,23 @@ var (
 	ErrDirectory = errors.New("is a directory")
 	ErrNoStat    = errors.New("stat data unavailable")
 
-	DefaultLock = semaphore.NewWeighted(int64(runtime.NumCPU()))
+	DefaultSemaphore = semaphore.NewWeighted(int64(runtime.NumCPU()))
+	DefaultSum       = &Sum{Semaphore: DefaultSemaphore}
 )
 
+// Sum may be used to calculate checksums of files and directories.
+// Directory checksums use Merkle trees to hash their contents.
+// If noDirs is true, Files that refer to directories will return ErrDirectory.
+// If Semaphone is not provided, DefaultSemaphore is used.
 type Sum struct {
-	Sem      *semaphore.Weighted
-	SkipDirs bool
+	Semaphore *semaphore.Weighted
+	NoDirs    bool
 }
 
-func New(skipDirs bool) *Sum {
-	return &Sum{
-		Sem:      DefaultLock,
-		SkipDirs: skipDirs,
-	}
-}
-
+// Find takes a slice of Files and returns a slice of *Nodes.
+// Each *Node contains either a checksum or an error.
+// Unlike Each and EachList, Find returns immediately on the first error encountered.
+// Returned *Nodes are guaranteed to have Node.Err set to nil.
 func (s *Sum) Find(files []File) ([]*Node, error) {
 	var nodes []*Node
 	if err := s.EachList(files, func(n *Node) error {
@@ -47,7 +49,10 @@ func (s *Sum) Find(files []File) ([]*Node, error) {
 	return nodes, nil
 }
 
-func (s *Sum) EachList(files []File, f func(*Node) error) error {
+// EachList takes a slice of Files and invokes f for each resulting *Node.
+// Each *Node contains either a checksum or an error.
+// EachList returns immediately if fn returns an error.
+func (s *Sum) EachList(files []File, fn func(*Node) error) error {
 	ch := make(chan File)
 	ctx, done := context.WithCancel(context.Background())
 	defer done()
@@ -62,10 +67,13 @@ func (s *Sum) EachList(files []File, f func(*Node) error) error {
 		}
 		close(ch)
 	}()
-	return s.Each(ch, f)
+	return s.Each(ch, fn)
 }
 
-func (s *Sum) Each(files <-chan File, f func(*Node) error) error {
+// Each takes a channel of Files and invokes f for each resulting *Node.
+// Each *Node contains either a checksum or an error.
+// Each returns immediately if fn returns an error.
+func (s *Sum) Each(files <-chan File, fn func(*Node) error) error {
 	queue := newNodeQueue()
 	go func() {
 		for file := range files {
@@ -87,7 +95,7 @@ func (s *Sum) Each(files <-chan File, f func(*Node) error) error {
 
 	// TODO: err does not shutdown goroutines, need to thread ctx, can't close files channel
 	for node := queue.dequeue(); node != nil; node = queue.dequeue() {
-		if err := f(node); err != nil {
+		if err := fn(node); err != nil {
 			return err
 		}
 	}
@@ -95,19 +103,27 @@ func (s *Sum) Each(files <-chan File, f func(*Node) error) error {
 }
 
 func (s *Sum) acquireCPU() {
-	s.Sem.Acquire(context.Background(), 1)
+	sem := DefaultSemaphore
+	if s.Semaphore != nil {
+		sem = s.Semaphore
+	}
+	sem.Acquire(context.Background(), 1)
 }
 
 func (s *Sum) releaseCPU() {
-	s.Sem.Release(1)
+	sem := DefaultSemaphore
+	if s.Semaphore != nil {
+		sem = s.Semaphore
+	}
+	sem.Release(1)
 }
 
 // If passed, sched is called exactly once when all remaining work has acquired locks on the CPU
 func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 	s.acquireCPU()
-	rOnce := doOnce(true)
+	rOnce := newOnce()
 	defer rOnce.Do(s.releaseCPU)
-	sOnce := doOnce(true)
+	sOnce := newOnce()
 	defer sOnce.Do(sched)
 
 	fi, err := file.stat()
@@ -136,7 +152,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 	var sum []byte
 	switch {
 	case fi.IsDir():
-		if s.SkipDirs {
+		if s.NoDirs {
 			return newFileErrorNode("", file, subdir, ErrDirectory)
 		}
 		names, err := readDirUnordered(file.Path)
@@ -166,7 +182,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 				// safe because subdir nodes have generated bases
 				name = filepath.Base(n.Path)
 			}
-			b, err := n.hashFileAttr()
+			b, err := hashFileAttr(n)
 			if err != nil {
 				return newFileErrorNode("hash metadata for file", file, subdir, err)
 			}
@@ -199,7 +215,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		n.Path = path
 		fErr := &FileError{}
 		if errors.As(err, &fErr) {
-			fErr.Path = path
+			fErr.Path = path // FIXME: account for symlink to directory
 		}
 		return n
 	case fi.Mode()&os.ModeSymlink != 0:
@@ -240,7 +256,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		Sys:  sys,
 	}
 	if inclusive && !subdir {
-		n.Sum, err = n.hashFileAttr()
+		n.Sum, err = hashFileAttr(n)
 		if err != nil {
 			return newFileErrorNode("hash metadata for file", file, subdir, err)
 		}
@@ -272,6 +288,10 @@ func (s *Sum) walkDir(file File, names []string) <-chan *Node {
 	return nodes
 }
 
+func newOnce() doOnce {
+	return true
+}
+
 // sync.Once is concurrent, not needed here
 type doOnce bool
 
@@ -297,13 +317,15 @@ func newFileError(action, path string, subdir bool, err error) error {
 	}
 }
 
+// FileError is similar to os.PathError, but contains extra information such as Subdir.
 type FileError struct {
-	Action string
+	Action string // failed action
 	Path   string
-	Subdir bool
+	Subdir bool // error apply to file/dir in subdir of specified path
 	Err    error
 }
 
+// Error message
 func (e *FileError) Error() string {
 	err := e.Err
 	pErr := &os.PathError{}
@@ -320,6 +342,7 @@ func (e *FileError) Error() string {
 	return fmt.Sprintf("%[2]s: failed to %[1]s: %[3]s", e.Action, e.Path, err)
 }
 
+// Unwrap returns the underlying error
 func (e *FileError) Unwrap() error {
 	return e.Err
 }

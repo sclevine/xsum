@@ -35,73 +35,73 @@ func ParseHash(alg string) (xsum.Hash, error) {
 	// Cryptographic hashes
 
 	case "md4":
-		return xsum.NewHashAlg(xsum.HashMD4, md4.New), nil
+		return xsum.NewHashFunc(xsum.HashMD4, md4.New), nil
 	case "md5":
-		return xsum.NewHashAlg(xsum.HashMD5, md5.New), nil
+		return xsum.NewHashFunc(xsum.HashMD5, md5.New), nil
 
 	case "sha1":
-		return xsum.NewHashAlg(xsum.HashSHA1, sha1.New), nil
+		return xsum.NewHashFunc(xsum.HashSHA1, sha1.New), nil
 	case "sha256", "sha2256", "sha2-256":
-		return xsum.NewHashAlg(xsum.HashSHA256, sha256.New), nil
+		return xsum.NewHashFunc(xsum.HashSHA256, sha256.New), nil
 	case "sha224", "sha2224", "sha2-224":
-		return xsum.NewHashAlg(xsum.HashSHA224, sha256.New224), nil
+		return xsum.NewHashFunc(xsum.HashSHA224, sha256.New224), nil
 	case "sha512", "sha2512", "sha2-512":
-		return xsum.NewHashAlg(xsum.HashSHA512, sha512.New), nil
+		return xsum.NewHashFunc(xsum.HashSHA512, sha512.New), nil
 	case "sha384", "sha2384", "sha2-384":
-		return xsum.NewHashAlg(xsum.HashSHA384, sha512.New384), nil
+		return xsum.NewHashFunc(xsum.HashSHA384, sha512.New384), nil
 	case "sha512224", "sha512-224", "sha2512224", "sha2-512224", "sha2-512-224":
-		return xsum.NewHashAlg(xsum.HashSHA512_224, sha512.New512_224), nil
+		return xsum.NewHashFunc(xsum.HashSHA512_224, sha512.New512_224), nil
 	case "sha512256", "sha512-256", "sha2512256", "sha2-512256", "sha2-512-256":
-		return xsum.NewHashAlg(xsum.HashSHA512_256, sha512.New512_256), nil
+		return xsum.NewHashFunc(xsum.HashSHA512_256, sha512.New512_256), nil
 	case "sha3224", "sha3-224":
-		return xsum.NewHashAlg(xsum.HashSHA3_224, sha3.New224), nil
+		return xsum.NewHashFunc(xsum.HashSHA3_224, sha3.New224), nil
 	case "sha3256", "sha3-256":
-		return xsum.NewHashAlg(xsum.HashSHA3_256, sha3.New256), nil
+		return xsum.NewHashFunc(xsum.HashSHA3_256, sha3.New256), nil
 	case "sha3384", "sha3-384":
-		return xsum.NewHashAlg(xsum.HashSHA3_384, sha3.New384), nil
+		return xsum.NewHashFunc(xsum.HashSHA3_384, sha3.New384), nil
 	case "sha3512", "sha3-512":
-		return xsum.NewHashAlg(xsum.HashSHA3_512, sha3.New512), nil
+		return xsum.NewHashFunc(xsum.HashSHA3_512, sha3.New512), nil
 
 	case "b2s256", "b2s-256", "blake2s256", "blake2s-256":
-		return xsum.NewHashAlg(xsum.HashBlake2s256, mustHash(blake2s.New256)), nil
+		return xsum.NewHashFunc(xsum.HashBlake2s256, mustHash(blake2s.New256)), nil
 	case "b2b256", "b2b-256", "blake2b256", "blake2b-256":
-		return xsum.NewHashAlg(xsum.HashBlake2b256, mustHash(blake2b.New256)), nil
+		return xsum.NewHashFunc(xsum.HashBlake2b256, mustHash(blake2b.New256)), nil
 	case "b2b384", "b2b-384", "blake2b384", "blake2b-384":
-		return xsum.NewHashAlg(xsum.HashBlake2b384, mustHash(blake2b.New384)), nil
+		return xsum.NewHashFunc(xsum.HashBlake2b384, mustHash(blake2b.New384)), nil
 	case "b2b512", "b2b-512", "blake2b512", "blake2b-512":
-		return xsum.NewHashAlg(xsum.HashBlake2b512, mustHash(blake2b.New512)), nil
+		return xsum.NewHashFunc(xsum.HashBlake2b512, mustHash(blake2b.New512)), nil
 
 	case "rmd160", "rmd-160", "ripemd160", "ripemd-160":
-		return xsum.NewHashAlg(xsum.HashRMD160, ripemd160.New), nil
+		return xsum.NewHashFunc(xsum.HashRMD160, ripemd160.New), nil
 
 	// Non-cryptographic hashes
 
 	case "crc32", "crc32ieee", "crc32-ieee":
-		return xsum.NewHashAlg(xsum.HashCRC32, hashTab32(crc32.New, crc32.IEEETable)), nil
+		return xsum.NewHashFunc(xsum.HashCRC32, hashTab32(crc32.New, crc32.IEEETable)), nil
 	case "crc32c", "crc32-c", "crc32castagnoli", "crc32-castagnoli":
-		return xsum.NewHashAlg(xsum.HashCRC32c, hashTab32(crc32.New, crc32.MakeTable(crc32.Castagnoli))), nil
+		return xsum.NewHashFunc(xsum.HashCRC32c, hashTab32(crc32.New, crc32.MakeTable(crc32.Castagnoli))), nil
 	case "crc32k", "crc32-k", "crc32koopman", "crc32-koopman":
-		return xsum.NewHashAlg(xsum.HashCRC32k, hashTab32(crc32.New, crc32.MakeTable(crc32.Koopman))), nil
+		return xsum.NewHashFunc(xsum.HashCRC32k, hashTab32(crc32.New, crc32.MakeTable(crc32.Koopman))), nil
 	case "crc64iso", "crc64-iso":
-		return xsum.NewHashAlg(xsum.HashCRC64ISO, hashTab64(crc64.New, crc64.MakeTable(crc64.ISO))), nil
+		return xsum.NewHashFunc(xsum.HashCRC64ISO, hashTab64(crc64.New, crc64.MakeTable(crc64.ISO))), nil
 	case "crc64ecma", "crc64-ecma":
-		return xsum.NewHashAlg(xsum.HashCRC64ECMA, hashTab64(crc64.New, crc64.MakeTable(crc64.ECMA))), nil
+		return xsum.NewHashFunc(xsum.HashCRC64ECMA, hashTab64(crc64.New, crc64.MakeTable(crc64.ECMA))), nil
 
 	case "adler32":
-		return xsum.NewHashAlg(xsum.HashAdler32, hash32(adler32.New)), nil
+		return xsum.NewHashFunc(xsum.HashAdler32, hash32(adler32.New)), nil
 
 	case "fnv32":
-		return xsum.NewHashAlg(xsum.HashFNV32, hash32(fnv.New32)), nil
+		return xsum.NewHashFunc(xsum.HashFNV32, hash32(fnv.New32)), nil
 	case "fnv32a":
-		return xsum.NewHashAlg(xsum.HashFNV32a, hash32(fnv.New32a)), nil
+		return xsum.NewHashFunc(xsum.HashFNV32a, hash32(fnv.New32a)), nil
 	case "fnv64":
-		return xsum.NewHashAlg(xsum.HashFNV64, hash64(fnv.New64)), nil
+		return xsum.NewHashFunc(xsum.HashFNV64, hash64(fnv.New64)), nil
 	case "fnv64a":
-		return xsum.NewHashAlg(xsum.HashFNV64a, hash64(fnv.New64a)), nil
+		return xsum.NewHashFunc(xsum.HashFNV64a, hash64(fnv.New64a)), nil
 	case "fnv128":
-		return xsum.NewHashAlg(xsum.HashFNV128, fnv.New128), nil
+		return xsum.NewHashFunc(xsum.HashFNV128, fnv.New128), nil
 	case "fnv128a":
-		return xsum.NewHashAlg(xsum.HashFNV128a, fnv.New128a), nil
+		return xsum.NewHashFunc(xsum.HashFNV128a, fnv.New128a), nil
 
 	default:
 		// xsum plugin

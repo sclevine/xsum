@@ -50,6 +50,8 @@ const (
 
 func hashToEncoding(h string) encoding.HashType {
 	switch h {
+	case HashNone:
+		return encoding.HashNone
 	case HashMD4:
 		return encoding.HashMD4
 	case HashMD5:
@@ -111,7 +113,7 @@ func hashToEncoding(h string) encoding.HashType {
 	case HashFNV128a:
 		return encoding.HashFNV128a
 	default:
-		return encoding.HashNone
+		return encoding.HashUnknown
 	}
 }
 
@@ -122,8 +124,8 @@ type Hash interface {
 	File(path string) ([]byte, error)
 }
 
-func NewHashAlg(name string, fn func() hash.Hash) Hash {
-	return &hashAlg{
+func NewHashFunc(name string, fn func() hash.Hash) Hash {
+	return &hashFunc{
 		name: name,
 		fn:   fn,
 	}
@@ -136,16 +138,16 @@ func NewHashPlugin(name, path string) Hash {
 	}
 }
 
-type hashAlg struct {
+type hashFunc struct {
 	name string
 	fn   func() hash.Hash
 }
 
-func (h *hashAlg) String() string {
+func (h *hashFunc) String() string {
 	return h.name
 }
 
-func (h *hashAlg) Metadata(b []byte) ([]byte, error) {
+func (h *hashFunc) Metadata(b []byte) ([]byte, error) {
 	hf := h.fn()
 	if _, err := hf.Write(b); err != nil {
 		return nil, err
@@ -153,7 +155,7 @@ func (h *hashAlg) Metadata(b []byte) ([]byte, error) {
 	return hf.Sum(nil), nil
 }
 
-func (h *hashAlg) Data(r io.Reader) ([]byte, error) {
+func (h *hashFunc) Data(r io.Reader) ([]byte, error) {
 	hf := h.fn()
 	if _, err := io.Copy(hf, r); err != nil {
 		return nil, err
@@ -161,7 +163,7 @@ func (h *hashAlg) Data(r io.Reader) ([]byte, error) {
 	return hf.Sum(nil), nil
 }
 
-func (h *hashAlg) File(path string) ([]byte, error) {
+func (h *hashFunc) File(path string) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
