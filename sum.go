@@ -144,8 +144,10 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 	if file.Stdin {
 		file.Mask.Attr &= ^AttrX
 	}
+	inclusive := file.Mask.Attr&AttrInclusive != 0
+	noData := file.Mask.Attr&AttrNoData != 0 && (inclusive || subdir)
 
-	fi, err := file.stat()
+	fi, err := file.stat(subdir)
 	if os.IsNotExist(err) {
 		return newFileErrorNode("", file, subdir, err)
 	}
@@ -161,16 +163,11 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 	}
 	var xattr *Xattr
 	if file.Mask.Attr&AttrX != 0 {
-		xattr, err = file.xattr()
+		xattr, err = file.xattr(subdir)
 		if err != nil {
 			return newFileErrorNode("get xattr", file, subdir, err)
 		}
 	}
-
-	portable := file.Mask.Attr&AttrNoName != 0
-	inclusive := file.Mask.Attr&AttrInclusive != 0
-	follow := file.Mask.Attr&AttrFollow != 0 || (!inclusive && !subdir)
-	noData := file.Mask.Attr&AttrNoData != 0 && (inclusive || subdir)
 
 	var sum []byte
 	switch {
@@ -201,7 +198,7 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 				return newFileErrorNode("", file, subdir, n.Err)
 			}
 			var name string
-			if !portable {
+			if file.Mask.Attr&AttrNoName == 0 {
 				// safe because subdir nodes have generated bases
 				name = filepath.Base(n.Path)
 			}
@@ -223,24 +220,6 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 			return newFileErrorNode("hash", file, subdir, err)
 		}
 
-	case fi.Mode()&os.ModeSymlink != 0 && follow:
-		link, err := filepath.EvalSymlinks(file.Path)
-		if err != nil {
-			return newFileErrorNode("", file, subdir, err) // closer to, e.g., shasum w/o action
-		}
-
-		rOnce.Do(s.releaseCPU) // will be re-acquired at dest
-		sOnce.Do(nil)          // prevent defer, will be called at dest
-
-		path := file.Path
-		file.Path = link
-		n := s.walkFile(file, subdir, sched) // FIXME: pass link here instead?
-		n.Path = path
-		fErr := &FileError{}
-		if errors.As(err, &fErr) && !subdir {
-			fErr.Path = path // FIXME: account for symlink to directory, track real vs. fake path?
-		}
-		return n
 	case fi.Mode()&os.ModeSymlink != 0:
 		sOnce.Do(sched)
 		file.Mask.Attr &= ^AttrNoName // not directory

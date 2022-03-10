@@ -19,7 +19,7 @@ func getSys(fi os.FileInfo) (*Sys, error) {
 	return nil, ErrNoStat
 }
 
-func getXattr(_ string, _ Hash) ([]encoding.NamedHash, error) {
+func getXattr(_ string, _ Hash, _ bool) ([]encoding.NamedHash, error) {
 	return nil, ErrNoXattr
 }
 

@@ -8,14 +8,18 @@ import (
 	"github.com/sclevine/xsum/encoding"
 )
 
-func getXattr(path string, hash Hash) ([]encoding.NamedHash, error) {
-	attrs, err := xattr.LList(path)
+func getXattr(path string, hash Hash, follow bool) ([]encoding.NamedHash, error) {
+	xlist, xget := xattr.List, xattr.Get
+	if !follow {
+		xlist, xget = xattr.LList, xattr.LGet
+	}
+	attrs, err := xlist(path)
 	if err != nil {
 		return nil, err
 	}
 	var hashes []encoding.NamedHash
 	for _, attr := range attrs {
-		val, err := xattr.LGet(path, attr)
+		val, err := xget(path, attr)
 		if err != nil {
 			return nil, err
 		}

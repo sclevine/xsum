@@ -22,15 +22,18 @@ func (f *File) sum() ([]byte, error) {
 	return f.Hash.File(f.Path)
 }
 
-func (f *File) stat() (os.FileInfo, error) {
+func (f *File) stat(subdir bool) (os.FileInfo, error) {
 	if f.Stdin {
 		return os.Stdin.Stat()
 	}
-	return os.Lstat(f.Path)
+	if !f.follow(subdir) {
+		return os.Lstat(f.Path)
+	}
+	return os.Stat(f.Path)
 }
 
-func (f *File) xattr() (*Xattr, error) {
-	hashes, err := getXattr(f.Path, f.Hash)
+func (f *File) xattr(subdir bool) (*Xattr, error) {
+	hashes, err := getXattr(f.Path, f.Hash, f.follow(subdir))
 	if err != nil {
 		return nil, err
 	}
@@ -38,6 +41,11 @@ func (f *File) xattr() (*Xattr, error) {
 		HashType: hashToEncoding(f.Hash.String()),
 		Hashes:   hashes,
 	}, nil
+}
+
+func (f *File) follow(subdir bool) bool {
+	inclusive := f.Mask.Attr&AttrInclusive != 0
+	return f.Mask.Attr&AttrFollow != 0 || (!inclusive && !subdir)
 }
 
 type Node struct {
