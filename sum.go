@@ -76,25 +76,36 @@ func (s *Sum) EachList(files []File, fn func(*Node) error) error {
 // Each returns immediately if fn returns an error.
 func (s *Sum) Each(files <-chan File, fn func(*Node) error) error {
 	queue := newNodeQueue()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	go func() {
-		for file := range files {
-			file := file
-			var wg sync.WaitGroup
-			if file.Path != "" {
-				file.Path = filepath.Clean(file.Path)
+	loop:
+		for {
+			select {
+			case file, ok := <-files:
+				if !ok {
+					break loop
+				}
+				var wg sync.WaitGroup
+				if file.Path != "" {
+					file.Path = filepath.Clean(file.Path)
+				}
+				nodeRec := make(chan *Node, 1)
+				queue.enqueue(nodeRec)
+				wg.Add(1)
+				go func() {
+					nodeRec <- s.walkFile(file, false, wg.Done)
+				}()
+				wg.Wait()
+			case <-ctx.Done(): // fast exit via ctx cancel is better for CLI
+				break loop
 			}
-			nodeRec := make(chan *Node)
-			queue.enqueue(nodeRec)
-			wg.Add(1)
-			go func() {
-				nodeRec <- s.walkFile(file, false, wg.Done)
-			}()
-			wg.Wait()
 		}
 		queue.close()
 	}()
 
-	// TODO: err does not shutdown goroutines, need to thread ctx, can't close files channel
+	// TODO: err does not shutdown all goroutines, need to thread ctx
 	for node := queue.dequeue(); node != nil; node = queue.dequeue() {
 		if err := fn(node); err != nil {
 			return err

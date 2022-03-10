@@ -12,7 +12,6 @@ import (
 	"github.com/sclevine/xsum/encoding"
 )
 
-
 const (
 	HashNone       = ""
 	HashMD4        = "md4"
@@ -46,7 +45,6 @@ const (
 	HashFNV128     = "fnv128"
 	HashFNV128a    = "fnv128a"
 )
-
 
 func hashToEncoding(h string) encoding.HashType {
 	switch h {
@@ -117,13 +115,16 @@ func hashToEncoding(h string) encoding.HashType {
 	}
 }
 
+// Hash provides a named hash function applicable to several types of data.
 type Hash interface {
-	String() string
+	String() string // returns function name
 	Metadata(b []byte) ([]byte, error)
 	Data(r io.Reader) ([]byte, error)
 	File(path string) ([]byte, error)
 }
 
+// NewHashFunc returns a Hash defined by func fn.
+// The same func fn is used for all types of data.
 func NewHashFunc(name string, fn func() hash.Hash) Hash {
 	return &hashFunc{
 		name: name,
@@ -131,6 +132,9 @@ func NewHashFunc(name string, fn func() hash.Hash) Hash {
 	}
 }
 
+// NewHashPlugin returns a Hash backed by the xsum plugin at the specified path.
+// File()/Data() and Metadata() may use different underlying hash functions.
+// See PLUGIN.md for details.
 func NewHashPlugin(name, path string) Hash {
 	return &hashPlugin{
 		name: name,
