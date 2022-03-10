@@ -17,6 +17,7 @@ import (
 var (
 	ErrDirectory = errors.New("is a directory")
 	ErrNoStat    = errors.New("stat data unavailable")
+	ErrNoXattr   = errors.New("xattr data unavailable")
 
 	DefaultSemaphore = semaphore.NewWeighted(int64(runtime.NumCPU()))
 	DefaultSum       = &Sum{Semaphore: DefaultSemaphore}
@@ -126,6 +127,13 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 	sOnce := newOnce()
 	defer sOnce.Do(sched)
 
+	if err := validateMask(file.Mask); err != nil {
+		return newFileErrorNode("validate mask for file", file, subdir, err)
+	}
+	if file.Stdin {
+		file.Mask.Attr &= ^AttrX
+	}
+
 	fi, err := file.stat()
 	if os.IsNotExist(err) {
 		return newFileErrorNode("", file, subdir, err)
@@ -133,15 +141,19 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 	if err != nil {
 		return newFileErrorNode("stat", file, subdir, err)
 	}
-	sys, err := file.sys(fi)
+	sys, err := getSys(fi)
 	if err == ErrNoStat &&
 		file.Mask.Attr&(AttrUID|AttrGID|AttrSpecial|AttrMtime|AttrCtime) == 0 {
 		// sys not needed
 	} else if err != nil {
 		return newFileErrorNode("stat", file, subdir, err)
 	}
-	if err := validateMask(file.Mask); err != nil {
-		return newFileErrorNode("validate mask for file", file, subdir, err)
+	var xattr *Xattr
+	if file.Mask.Attr&AttrX != 0 {
+		xattr, err = file.xattr()
+		if err != nil {
+			return newFileErrorNode("get xattr", file, subdir, err)
+		}
 	}
 
 	portable := file.Mask.Attr&AttrNoName != 0
@@ -207,15 +219,15 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 		}
 
 		rOnce.Do(s.releaseCPU) // will be re-acquired at dest
-		sOnce.Do(nil) // prevent defer, will be called at dest
+		sOnce.Do(nil)          // prevent defer, will be called at dest
 
 		path := file.Path
 		file.Path = link
-		n := s.walkFile(file, subdir, sched)
+		n := s.walkFile(file, subdir, sched) // FIXME: pass link here instead?
 		n.Path = path
 		fErr := &FileError{}
-		if errors.As(err, &fErr) {
-			fErr.Path = path // FIXME: account for symlink to directory
+		if errors.As(err, &fErr) && !subdir {
+			fErr.Path = path // FIXME: account for symlink to directory, track real vs. fake path?
 		}
 		return n
 	case fi.Mode()&os.ModeSymlink != 0:
@@ -250,10 +262,11 @@ func (s *Sum) walkFile(file File, subdir bool, sched func()) *Node {
 	}
 
 	n := &Node{
-		File: file,
-		Sum:  sum,
-		Mode: fi.Mode(),
-		Sys:  sys,
+		File:  file,
+		Sum:   sum,
+		Mode:  fi.Mode(),
+		Sys:   sys,
+		Xattr: xattr,
 	}
 	if inclusive && !subdir {
 		n.Sum, err = hashFileAttr(n)

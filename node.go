@@ -29,12 +29,35 @@ func (f *File) stat() (os.FileInfo, error) {
 	return os.Lstat(f.Path)
 }
 
+func (f *File) xattr() (*Xattr, error) {
+	hashes, err := getXattr(f.Path, f.Hash)
+	if err != nil {
+		return nil, err
+	}
+	return &Xattr{
+		HashType: hashToEncoding(f.Hash.String()),
+		Hashes:   hashes,
+	}, nil
+}
+
 type Node struct {
 	File
-	Sum  []byte
-	Mode os.FileMode
-	Sys  *encoding.Sys
-	Err  error
+	Sum   []byte
+	Mode  os.FileMode
+	Sys   *Sys
+	Xattr *Xattr
+	Err   error
+}
+
+type Sys struct {
+	UID, GID     *uint32
+	Mtime, Ctime *encoding.Timespec
+	Rdev         *uint64
+}
+
+type Xattr struct {
+	HashType encoding.HashType
+	Hashes   []encoding.NamedHash
 }
 
 func (n *Node) String() string {
@@ -64,6 +87,9 @@ const (
 func hashFileAttr(n *Node) ([]byte, error) {
 	if n.Sys == nil && n.Mask.Attr&(AttrUID|AttrGID|AttrSpecial|AttrMtime|AttrCtime) != 0 {
 		return nil, ErrNoStat
+	}
+	if n.Xattr == nil && n.Mask.Attr&AttrX != 0 {
+		return nil, ErrNoXattr
 	}
 
 	var specialMask os.FileMode
@@ -96,19 +122,18 @@ func hashFileAttr(n *Node) ([]byte, error) {
 		sys.Rdev = n.Sys.Rdev
 	}
 	if n.Mask.Attr&AttrX != 0 {
-		sys.XattrHashes = n.Sys.XattrHashes
-		sys.XattrHashType = n.Sys.XattrHashType
+		sys.XattrHashType = n.Xattr.HashType
+		sys.XattrHashes = n.Xattr.Hashes
 	}
 
 	hashType := encoding.HashNone
-	if len(n.Sum) != 0 { 	// check no-data attr or not?
+	if len(n.Sum) != 0 { // check no-data attr or not?
 		hashType = hashToEncoding(n.Hash.String())
 	}
 
-	asn, err := encoding.FileASN1DER(hashType, n.Sum, n.Mode, modeMask, sys)
+	der, err := encoding.FileASN1DER(hashType, n.Sum, n.Mode, modeMask, sys)
 	if err != nil {
 		return nil, err
 	}
-	return n.Hash.Metadata(asn)
+	return n.Hash.Metadata(der)
 }
-

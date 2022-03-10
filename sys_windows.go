@@ -9,14 +9,18 @@ import (
 )
 
 
-func (f *File) sys(fi os.FileInfo) (*encoding.Sys, error) {
+func getSys(fi os.FileInfo) (*Sys, error) {
 	if stat, ok := fi.Sys().(*syscall.Win32FileAttributeData); ok && stat != nil {
-		return &encoding.Sys{
+		return &Sys{
 			Mtime: filetimeToTimespec(stat.LastWriteTime),
 			Ctime: filetimeToTimespec(stat.CreationTime),
 		}, nil
 	}
 	return nil, ErrNoStat
+}
+
+func getXattr(_ string, _ Hash) ([]encoding.NamedHash, error) {
+	return nil, ErrNoXattr
 }
 
 func filetimeToTimespec(ft syscall.Filetime) *encoding.Timespec {

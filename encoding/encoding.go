@@ -85,8 +85,8 @@ type Sys struct {
 	UID, GID      *uint32
 	Mtime, Ctime  *Timespec
 	Rdev          *uint64
-	XattrHashes   []NamedHash
 	XattrHashType HashType
+	XattrHashes   []NamedHash
 }
 
 type Timespec struct {

@@ -24,7 +24,7 @@ type Options struct {
 }
 
 type OptionsGeneral struct {
-	Algorithm string `short:"a" long:"algorithm" default:"sha256" description:"Use hashing algorithm"`
+	Algorithm string `short:"a" long:"algorithm" default:"sha256" description:"Use specified hash function"`
 	Write     string `short:"w" long:"write" optional:"yes" optional-value:"default" description:"Write a separate, adjacent file for each checksum\nBy default, filename will be [orig-name].[alg]\nUse -w=ext or -wext to override extension (no space!)"`
 	Check     bool   `short:"c" long:"check" description:"Validate checksums"`
 	Status    bool   `short:"s" long:"status" description:"With --check, suppress all output"`
