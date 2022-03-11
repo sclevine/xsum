@@ -150,9 +150,24 @@ xsum: The Beatles: is a directory
 
 ## Installation
 
+### Homebrew
+
+The `xsum` CLI and plugins are available via [Homebrew](https://brew.sh):
+
+```
+brew install sclevine/tap/xsum
+brew install sclevine/tap/xsum-pcm # optional PCM plugin
+```
+
+Invoke `xsum-pcm` with `xsum -a pcm`.
+
+### Manual
+
 Binaries for macOS, Linux, and Windows are [attached to each release](https://github.com/sclevine/xsum/releases).
 
 To install `xsum-pcm`, copy the binary to `$PATH`. Invoke it with `xsum -a pcm`.
+
+### Docker
 
 `xsum` is also available as a [Docker image](https://hub.docker.com/r/sclevine/xsum) (includes `xsum-pcm` in `:full`).
 
