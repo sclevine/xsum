@@ -68,13 +68,14 @@ Usage:
   xsum [OPTIONS] [paths...]
 
 General Options:
-  -a, --algorithm=  Use hashing algorithm (default: sha256)
+  -a, --algorithm=  Use specified hash function (default: sha256)
   -w, --write=      Write a separate, adjacent file for each checksum
                     By default, filename will be [orig-name].[alg]
                     Use -w=ext or -wext to override extension (no space!)
   -c, --check       Validate checksums
   -s, --status      With --check, suppress all output
   -q, --quiet       With --check, suppress passing checksums
+  -v, --version     Show version
 
 Mask Options:
   -m, --mask=       Apply attribute mask as [777]7[+ugx...]:
