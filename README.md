@@ -4,8 +4,8 @@
 [![Tests](https://github.com/sclevine/xsum/actions/workflows/go.yml/badge.svg)](https://github.com/sclevine/xsum/actions/workflows/go.yml)
 
 **xsum** is a utility for calculating checksums that supports:
-- 18 cryptographic hash functions
-- 12 non-cryptographic hash functions
+- [18 cryptographic hash functions](#cryptographic)
+- [12 non-cryptographic hash functions](#non-cryptographic)
 
 The `xsum` CLI can be used in place of `shasum`, `md5sum`, or similar utilities.
 
@@ -186,3 +186,41 @@ NOTE: The current Go API should not be considered stable.
 - Certain (generally non-cryptographic) hash functions supported by xsum may have high collision rates with specific patterns of data.
   These hash functions may not be appropriate when used to generate checksums of directories.
   Unless you know what you are doing, choose a strong cryptographic hashing function (like sha256) when calculating checksums of directories.
+
+## Built-in Hash Functions
+
+### Cryptographic
+
+- `md4`
+- `md5`
+- `sha1`
+- `sha256`
+- `sha224`
+- `sha512`
+- `sha384`
+- `sha512-224`
+- `sha512-256`
+- `sha3-224`
+- `sha3-256`
+- `sha3-384`
+- `sha3-512`
+- `blake2s256`
+- `blake2b256`
+- `blake2b384`
+- `blake2b512`
+- `rmd160`
+
+### Non-cryptographic
+
+- `crc32`
+- `crc32c`
+- `crc32k`
+- `crc64iso`
+- `crc64ecma`
+- `adler32`
+- `fnv32`
+- `fnv32a`
+- `fnv64`
+- `fnv64a`
+- `fnv128`
+- `fnv128a`
