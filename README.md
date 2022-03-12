@@ -13,7 +13,9 @@ The `xsum` CLI can be used in place of `shasum`, `md5sum`, or similar utilities.
 - **Calculate a single checksum for an entire directory structure** using [Merkle trees](https://en.wikipedia.org/wiki/Merkle_tree).
   - Merkle trees allow for concurrency when calculating checksums of directories. (See [Performance](#performance).)
   - Merkle trees are the same data structure used to reference layers in Docker images.
-- **Calculate checksums that include file attributes** such as type, UID, GID, permissions, etc. (See [Format](#format).)
+- **Calculate checksums that include file attributes** such as type, UID, GID, permissions, etc.
+  - Attributes are serialized deterministically using [DER-encoded ASN.1](https://letsencrypt.org/docs/a-warm-welcome-to-asn1-and-der). (See [Format](#format).)
+  - Attributes include: file mode, UID, GID, mtime, ctime, xattrs, device ID
 - Execute plugins, including:
   - [**xsum-pcm**](./cmd/xsum-pcm): calculate checksums of raw PCM inside audio files (e.g., AAC, MP3, FLAC, ALAC)
     - Checksums remain constant when audio file metadata/tags change, but still protect audio stream.
