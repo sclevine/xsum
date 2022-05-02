@@ -61,6 +61,7 @@ real    0m2.832s
 user    0m19.328s
 sys     0m0.937s
 ```
+(671 files, 4.2 GB total, tested on 2.3 GHz Quad-Core Intel Core i7)
 
 ## Usage
 
